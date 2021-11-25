@@ -24,10 +24,6 @@ type chainJSON struct {
 }
 
 func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
-	chain := &ChainT{
-		length: NewInt("0"),
-	}
-
 	genesis := NewBlock([]byte(ChainID))
 	for _, tx := range txs {
 		err := genesis.Append(tx)
@@ -38,12 +34,14 @@ func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
 
 	genesis.Accept(priv)
 
-	err := chain.Append(genesis)
-	if err != nil {
+	if !genesis.IsValid() {
 		return nil
 	}
 
-	return chain
+	return &ChainT{
+		blocks: []Block{genesis},
+		length: NewInt("1"),
+	}
 }
 
 func (chain *ChainT) Range(x, y BigInt) Objects {
@@ -64,6 +62,9 @@ func (chain *ChainT) Append(obj Object) error {
 	if !block.IsValid() {
 		return errors.New("block is invalid")
 	}
+	if !bytes.Equal(block.LastHash(), chain.LastHash()) {
+		return errors.New("relation is invalid")
+	}
 	chain.blocks = append(chain.blocks, block)
 	chain.length = chain.length.Inc()
 	return nil
@@ -81,6 +82,9 @@ func (chain *ChainT) Find(hash Hash) Object {
 func (chain *ChainT) IsValid() bool {
 	for _, block := range chain.blocks {
 		if !block.IsValid() {
+			return false
+		}
+		if !bytes.Equal(block.LastHash(), chain.LastHash()) {
 			return false
 		}
 	}
@@ -101,7 +105,7 @@ func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
 			}
 		}
 
-		blockI := chain.Find(block.PrevHash())
+		blockI := chain.Find(block.LastHash())
 		if blockI == nil {
 			return checkTX.Nonce().Cmp(NewInt("0")) == 0
 		}
@@ -123,14 +127,14 @@ func (chain *ChainT) Wrap() []byte {
 	return chainBytes
 }
 
-func (chain *ChainT) SelectLazy(validators []PubKey) (PubKey, BigInt) {
+func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 	var (
 		finds []PubKey
 		diff  = NewInt("-1")
 	)
 
 	for _, pub := range validators {
-		lazyLevel := chain.Interval(pub)
+		lazyLevel := chain.LazyInterval(pub)
 
 		if lazyLevel.Cmp(diff) > 0 {
 			diff = lazyLevel
@@ -154,10 +158,10 @@ func (chain *ChainT) SelectLazy(validators []PubKey) (PubKey, BigInt) {
 		finds[0] = finds[rnum%lenpub]
 	}
 
-	return finds[0], diff
+	return finds[0]
 }
 
-func (chain *ChainT) Interval(pub PubKey) BigInt {
+func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	diff := NewInt("0")
 	block := chain.Find(chain.LastHash()).(Block)
 
@@ -177,7 +181,7 @@ func (chain *ChainT) Interval(pub PubKey) BigInt {
 			}
 		}
 
-		blockI := chain.Find(block.PrevHash())
+		blockI := chain.Find(block.LastHash())
 		if blockI == nil {
 			return NewInt("-1")
 		}

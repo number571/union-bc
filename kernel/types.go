@@ -34,6 +34,7 @@ type Signifier interface {
 }
 
 type Editor interface {
+	LastHash() Hash
 	Find(Hash) Object
 	Append(Object) error
 	Length() BigInt
@@ -42,6 +43,11 @@ type Editor interface {
 
 type Wrapper interface {
 	Wrap() []byte
+}
+
+type Laziness interface {
+	LazyInterval(PubKey) BigInt
+	SelectLazy([]PubKey) PubKey
 }
 
 type Transaction interface {
@@ -53,7 +59,6 @@ type Transaction interface {
 }
 
 type Block interface {
-	PrevHash() Hash
 	Accept(PrivKey) error
 
 	Editor
@@ -61,16 +66,10 @@ type Block interface {
 	Signifier
 }
 
-type Laziness interface {
-	Interval(PubKey) BigInt
-	SelectLazy([]PubKey) (PubKey, BigInt)
-}
-
 type Chain interface {
-	LastHash() Hash
 	NonceIsValid(Block, Transaction) bool
-
 	Laziness
+
 	Editor
 	Wrapper
 	Verifier

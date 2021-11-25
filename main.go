@@ -20,31 +20,45 @@ func main() {
 		privs[2].PubKey(),
 	}
 
-	txsGenesis := []kernel.Transaction{
+	txs := []kernel.Transaction{
 		kernel.NewTransaction(privs[0], kernel.NewInt("0"), []byte("hello, world!")),
 		kernel.NewTransaction(privs[1], kernel.NewInt("0"), []byte("aaabbbccc")),
-		kernel.NewTransaction(privs[1], kernel.NewInt("0"), []byte("qwerty")),
+		kernel.NewTransaction(privs[2], kernel.NewInt("0"), []byte("qwerty")),
 	}
 
-	chain := kernel.NewChain(privs[0], txsGenesis)
+	chain := kernel.NewChain(privs[0], txs)
+
+	for i := 0; i < 100; i++ {
+		blocks := []kernel.Block{
+			newBlock(privs[0], chain, txs),
+			newBlock(privs[1], chain, txs),
+			newBlock(privs[2], chain, txs),
+		}
+
+		validator := chain.SelectLazy(pubs)
+		for _, block := range blocks {
+			if validator.Address() == block.Validator().Address() {
+				chain.Append(block)
+				break
+			}
+		}
+	}
+
+	begin := kernel.NewInt("0")
+	end := chain.Length()
+
+	list := chain.Range(begin, end).([]kernel.Block)
+	for _, block := range list {
+		fmt.Println(block.Validator().Address())
+	}
+}
+
+func newBlock(priv kernel.PrivKey, chain kernel.Chain, txs []kernel.Transaction) kernel.Block {
 	block := kernel.NewBlock(chain.LastHash())
-
-	txs := []kernel.Transaction{
-		kernel.NewTransaction(privs[0], kernel.NewInt("1"), []byte("12345")),
-		kernel.NewTransaction(privs[2], kernel.NewInt("1"), []byte("67890")),
-	}
-
 	for _, tx := range txs {
 		block.Append(tx)
 	}
 
-	block.Accept(privs[2])
-	chain.Append(block)
-
-	list := chain.Range(kernel.NewInt("0"), chain.Length()).([]kernel.Block)
-	for _, block := range list {
-		fmt.Println(string(block.Wrap()))
-	}
-
-	fmt.Println(chain.SelectLazy(pubs))
+	block.Accept(priv)
+	return block
 }

@@ -68,7 +68,7 @@ func (block *BlockT) Length() BigInt {
 	return NewInt(fmt.Sprintf("%d", len(block.txs)))
 }
 
-func (block *BlockT) PrevHash() Hash {
+func (block *BlockT) LastHash() Hash {
 	return block.prevHash
 }
 
@@ -91,8 +91,6 @@ func (block *BlockT) Find(hash Hash) Object {
 }
 
 func (block *BlockT) Accept(priv PrivKey) error {
-	var hash []byte
-
 	if priv == nil {
 		return errors.New("priv is nil")
 	}
@@ -105,22 +103,10 @@ func (block *BlockT) Accept(priv PrivKey) error {
 		return bytes.Compare(block.txs[i].Hash(), block.txs[j].Hash()) < 0
 	})
 
-	for _, tx := range block.txs {
-		hash = crypto.NewSHA256(bytes.Join(
-			[][]byte{
-				hash,
-				tx.Hash(),
-			},
-			[]byte{},
-		)).Bytes()
-	}
-
-	sign := priv.Sign(hash)
-
-	block.currHash = hash
-	block.sign = sign
-	block.validator = priv.PubKey()
 	block.accepted = true
+	block.currHash = block.newHash()
+	block.sign = priv.Sign(block.currHash)
+	block.validator = priv.PubKey()
 
 	return nil
 }
@@ -161,15 +147,22 @@ func (block *BlockT) Validator() PubKey {
 }
 
 func (block *BlockT) IsValid() bool {
-	var hash []byte
-
 	sort.SliceStable(block.txs, func(i, j int) bool {
 		return bytes.Compare(block.txs[i].Hash(), block.txs[j].Hash()) < 0
 	})
 
+	if !bytes.Equal(block.Hash(), block.newHash()) {
+		return false
+	}
+
+	return block.validator.Verify(block.Hash(), block.Sign())
+}
+
+func (block *BlockT) newHash() Hash {
+	hash := block.prevHash
 	for _, tx := range block.txs {
 		if !tx.IsValid() {
-			return false
+			return nil
 		}
 		hash = crypto.NewSHA256(bytes.Join(
 			[][]byte{
@@ -179,10 +172,5 @@ func (block *BlockT) IsValid() bool {
 			[]byte{},
 		)).Bytes()
 	}
-
-	if !bytes.Equal(block.Hash(), hash) {
-		return false
-	}
-
-	return block.validator.Verify(block.Hash(), block.Sign())
+	return hash
 }
