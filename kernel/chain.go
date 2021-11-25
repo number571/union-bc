@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"sort"
+	"strings"
 
 	"github.com/number571/gopeer/crypto"
 )
@@ -87,12 +89,12 @@ func (chain *ChainT) IsValid() bool {
 
 func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
 	for {
-		objects := block.Range(NewInt("0"), chain.Length())
-		if objects == nil {
+		txs := block.Range(NewInt("0"), chain.Length())
+		if txs == nil {
 			return false
 		}
 
-		for _, tx := range objects.([]Transaction) {
+		for _, tx := range txs.([]Transaction) {
 			equalValidator := checkTX.Validator().Address() == tx.Validator().Address()
 			if equalValidator && checkTX.Nonce().Cmp(tx.Nonce()) > 0 {
 				return true
@@ -129,22 +131,27 @@ func (chain *ChainT) SelectLazy(validators []PubKey) (PubKey, BigInt) {
 
 	for _, pub := range validators {
 		lazyLevel := chain.Interval(pub)
-		if lazyLevel.Cmp(diff) == 0 {
-			finds = append(finds, pub)
-			continue
-		}
 
 		if lazyLevel.Cmp(diff) > 0 {
 			diff = lazyLevel
 			finds = []PubKey{pub}
+			continue
+		}
+
+		if lazyLevel.Cmp(diff) == 0 {
+			finds = append(finds, pub)
+			continue
 		}
 	}
 
 	lenpub := uint64(len(finds))
 	if lenpub > 1 {
-		hash := chain.LastHash()
-		rnum := LoadInt(hash).Uint64()
-		return finds[rnum%lenpub], diff
+		sort.SliceStable(finds, func(i, j int) bool {
+			return strings.Compare(finds[i].Address(), finds[j].Address()) < 0
+		})
+
+		rnum := LoadInt(chain.LastHash()).Uint64()
+		finds[0] = finds[rnum%lenpub]
 	}
 
 	return finds[0], diff
@@ -159,12 +166,12 @@ func (chain *ChainT) Interval(pub PubKey) BigInt {
 			return diff
 		}
 
-		objects := block.Range(NewInt("0"), block.Length())
-		if objects == nil {
+		txs := block.Range(NewInt("0"), block.Length())
+		if txs == nil {
 			return NewInt("-1")
 		}
 
-		for _, tx := range objects.([]Transaction) {
+		for _, tx := range txs.([]Transaction) {
 			if pub.Address() == tx.Validator().Address() {
 				return diff
 			}
