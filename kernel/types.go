@@ -11,12 +11,14 @@ type PrivKey crypto.PrivKey
 type PubKey crypto.PubKey
 
 type Object interface{}
+type Objects interface{}
 
 type BigInt interface {
 	Inc() BigInt
 	Bytes() []byte
 	String() string
 	Cmp(BigInt) int
+	Uint64() uint64
 }
 
 type Verifier interface {
@@ -27,12 +29,15 @@ type Signifier interface {
 	Hash() Hash
 	Sign() Sign
 	Validator() PubKey
+
 	Verifier
 }
 
 type Editor interface {
-	Append(Object) error
 	Find(Hash) Object
+	Append(Object) error
+	Length() BigInt
+	Range(BigInt, BigInt) Objects
 }
 
 type Wrapper interface {
@@ -48,7 +53,6 @@ type Transaction interface {
 }
 
 type Block interface {
-	TXs() []Transaction
 	PrevHash() Hash
 	Accept(PrivKey) error
 
@@ -57,12 +61,16 @@ type Block interface {
 	Signifier
 }
 
-type Chain interface {
-	Blocks() []Block
-	LastHash() Hash
+type Laziness interface {
 	Interval(PubKey) BigInt
+	SelectLazy([]PubKey) (PubKey, BigInt)
+}
+
+type Chain interface {
+	LastHash() Hash
 	NonceIsValid(Block, Transaction) bool
 
+	Laziness
 	Editor
 	Wrapper
 	Verifier

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/number571/gopeer/crypto"
@@ -59,8 +60,12 @@ func LoadBlock(blockBytes []byte) Block {
 	return block
 }
 
-func (block *BlockT) TXs() []Transaction {
-	return block.txs
+func (block *BlockT) Range(x, y BigInt) Objects {
+	return block.txs[x.Uint64():y.Uint64()]
+}
+
+func (block *BlockT) Length() BigInt {
+	return NewInt(fmt.Sprintf("%d", len(block.txs)))
 }
 
 func (block *BlockT) PrevHash() Hash {

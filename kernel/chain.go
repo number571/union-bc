@@ -13,6 +13,7 @@ var (
 )
 
 type ChainT struct {
+	length BigInt
 	blocks []Block
 }
 
@@ -21,7 +22,9 @@ type chainJSON struct {
 }
 
 func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
-	chain := &ChainT{}
+	chain := &ChainT{
+		length: NewInt("0"),
+	}
 
 	genesis := NewBlock([]byte(ChainID))
 	for _, tx := range txs {
@@ -41,12 +44,16 @@ func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
 	return chain
 }
 
-func (chain *ChainT) Blocks() []Block {
-	return chain.blocks
+func (chain *ChainT) Range(x, y BigInt) Objects {
+	return chain.blocks[x.Uint64():y.Uint64()]
+}
+
+func (chain *ChainT) Length() BigInt {
+	return chain.length
 }
 
 func (chain *ChainT) LastHash() Hash {
-	last := len(chain.blocks) - 1
+	last := chain.length.Uint64() - 1
 	return chain.blocks[last].Hash()
 }
 
@@ -56,6 +63,7 @@ func (chain *ChainT) Append(obj Object) error {
 		return errors.New("block is invalid")
 	}
 	chain.blocks = append(chain.blocks, block)
+	chain.length = chain.length.Inc()
 	return nil
 }
 
@@ -79,7 +87,12 @@ func (chain *ChainT) IsValid() bool {
 
 func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
 	for {
-		for _, tx := range block.TXs() {
+		objects := block.Range(NewInt("0"), chain.Length())
+		if objects == nil {
+			return false
+		}
+
+		for _, tx := range objects.([]Transaction) {
 			equalValidator := checkTX.Validator().Address() == tx.Validator().Address()
 			if equalValidator && checkTX.Nonce().Cmp(tx.Nonce()) > 0 {
 				return true
@@ -108,6 +121,35 @@ func (chain *ChainT) Wrap() []byte {
 	return chainBytes
 }
 
+func (chain *ChainT) SelectLazy(validators []PubKey) (PubKey, BigInt) {
+	var (
+		finds []PubKey
+		diff  = NewInt("-1")
+	)
+
+	for _, pub := range validators {
+		lazyLevel := chain.Interval(pub)
+		if lazyLevel.Cmp(diff) == 0 {
+			finds = append(finds, pub)
+			continue
+		}
+
+		if lazyLevel.Cmp(diff) > 0 {
+			diff = lazyLevel
+			finds = []PubKey{pub}
+		}
+	}
+
+	lenpub := uint64(len(finds))
+	if lenpub > 1 {
+		hash := chain.LastHash()
+		rnum := LoadInt(hash).Uint64()
+		return finds[rnum%lenpub], diff
+	}
+
+	return finds[0], diff
+}
+
 func (chain *ChainT) Interval(pub PubKey) BigInt {
 	diff := NewInt("0")
 	block := chain.Find(chain.LastHash()).(Block)
@@ -117,7 +159,12 @@ func (chain *ChainT) Interval(pub PubKey) BigInt {
 			return diff
 		}
 
-		for _, tx := range block.TXs() {
+		objects := block.Range(NewInt("0"), block.Length())
+		if objects == nil {
+			return NewInt("-1")
+		}
+
+		for _, tx := range objects.([]Transaction) {
 			if pub.Address() == tx.Validator().Address() {
 				return diff
 			}

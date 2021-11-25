@@ -8,10 +8,16 @@ import (
 )
 
 func main() {
-	privs := []crypto.PrivKey{
+	privs := []kernel.PrivKey{
 		crypto.NewPrivKey(kernel.KeySize),
 		crypto.NewPrivKey(kernel.KeySize),
 		crypto.NewPrivKey(kernel.KeySize),
+	}
+
+	pubs := []kernel.PubKey{
+		privs[0].PubKey(),
+		privs[1].PubKey(),
+		privs[2].PubKey(),
 	}
 
 	txsGenesis := []kernel.Transaction{
@@ -25,20 +31,20 @@ func main() {
 
 	txs := []kernel.Transaction{
 		kernel.NewTransaction(privs[0], kernel.NewInt("1"), []byte("12345")),
-		kernel.NewTransaction(privs[1], kernel.NewInt("1"), []byte("67890")),
+		kernel.NewTransaction(privs[2], kernel.NewInt("1"), []byte("67890")),
 	}
 
 	for _, tx := range txs {
 		block.Append(tx)
 	}
 
-	block.Accept(privs[0])
+	block.Accept(privs[2])
 	chain.Append(block)
 
-	for _, block := range chain.Blocks() {
+	list := chain.Range(kernel.NewInt("0"), chain.Length()).([]kernel.Block)
+	for _, block := range list {
 		fmt.Println(string(block.Wrap()))
 	}
 
-	diff := chain.Interval(privs[2].PubKey())
-	fmt.Println(diff)
+	fmt.Println(chain.SelectLazy(pubs))
 }

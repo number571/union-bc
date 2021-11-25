@@ -35,3 +35,7 @@ func (x *BigIntT) Bytes() []byte {
 func (x *BigIntT) String() string {
 	return (*big.Int)(x).String()
 }
+
+func (x *BigIntT) Uint64() uint64 {
+	return (*big.Int)(x).Uint64()
+}
