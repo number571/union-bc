@@ -36,25 +36,16 @@ func NewTransaction(priv PrivKey, nonce BigInt, data []byte) Transaction {
 		return nil
 	}
 
-	nbytes := nonce.Bytes()
-
-	hash := crypto.NewSHA256(bytes.Join(
-		[][]byte{
-			nbytes,
-			data,
-		},
-		[]byte{},
-	)).Bytes()
-
-	sign := priv.Sign(hash)
-
-	return &TransactionT{
-		nonce:     nbytes,
+	tx := &TransactionT{
+		nonce:     nonce.Bytes(),
 		data:      data,
-		hash:      hash,
-		sign:      sign,
 		validator: priv.PubKey(),
 	}
+
+	tx.hash = tx.newHash()
+	tx.sign = priv.Sign(tx.hash)
+
+	return tx
 }
 
 func LoadTransaction(txbytes []byte) Transaction {
@@ -112,17 +103,20 @@ func (tx *TransactionT) Wrap() []byte {
 }
 
 func (tx *TransactionT) IsValid() bool {
-	hash := crypto.NewSHA256(bytes.Join(
+	if !bytes.Equal(tx.Hash(), tx.newHash()) {
+		return false
+	}
+
+	return tx.Validator().Verify(tx.Hash(), tx.Sign())
+}
+
+func (tx *TransactionT) newHash() Hash {
+	return crypto.NewSHA256(bytes.Join(
 		[][]byte{
+			tx.validator.Bytes(),
 			tx.Nonce().Bytes(),
 			tx.Data(),
 		},
 		[]byte{},
 	)).Bytes()
-
-	if !bytes.Equal(tx.Hash(), hash) {
-		return false
-	}
-
-	return tx.Validator().Verify(tx.Hash(), tx.Sign())
 }

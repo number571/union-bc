@@ -21,7 +21,7 @@ func LoadInt(bytes []byte) BigInt {
 }
 
 func (x *BigIntT) Inc() BigInt {
-	return (*BigIntT)(big.NewInt(0).Add((*big.Int)(x), big.NewInt(1)))
+	return (*BigIntT)((*big.Int)(x).Add((*big.Int)(x), big.NewInt(1)))
 }
 
 func (x *BigIntT) Cmp(y BigInt) int {

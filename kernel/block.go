@@ -104,9 +104,9 @@ func (block *BlockT) Accept(priv PrivKey) error {
 	})
 
 	block.accepted = true
+	block.validator = priv.PubKey()
 	block.currHash = block.newHash()
 	block.sign = priv.Sign(block.currHash)
-	block.validator = priv.PubKey()
 
 	return nil
 }
@@ -117,9 +117,9 @@ func (block *BlockT) Wrap() []byte {
 	}
 
 	blockConv := &blockJSON{
-		PrevHash:  block.prevHash,
-		CurrHash:  block.currHash,
-		Sign:      block.sign,
+		PrevHash:  block.LastHash(),
+		CurrHash:  block.Hash(),
+		Sign:      block.Sign(),
 		Validator: block.validator.Bytes(),
 	}
 
@@ -155,11 +155,17 @@ func (block *BlockT) IsValid() bool {
 		return false
 	}
 
-	return block.validator.Verify(block.Hash(), block.Sign())
+	return block.Validator().Verify(block.Hash(), block.Sign())
 }
 
 func (block *BlockT) newHash() Hash {
-	hash := block.prevHash
+	hash := bytes.Join(
+		[][]byte{
+			block.Validator().Bytes(),
+			block.LastHash(),
+		},
+		[]byte{},
+	)
 	for _, tx := range block.txs {
 		if !tx.IsValid() {
 			return nil
