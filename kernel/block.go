@@ -147,6 +147,10 @@ func (block *BlockT) Validator() PubKey {
 }
 
 func (block *BlockT) IsValid() bool {
+	if block.Validator() == nil {
+		return false
+	}
+
 	sort.SliceStable(block.txs, func(i, j int) bool {
 		return bytes.Compare(block.txs[i].Hash(), block.txs[j].Hash()) < 0
 	})

@@ -23,6 +23,7 @@ type chainJSON struct {
 	Blocks [][]byte
 }
 
+// TODO: LevelDB -> Create DB
 func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
 	genesis := NewBlock([]byte(ChainID))
 	for _, tx := range txs {
@@ -47,6 +48,7 @@ func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
 	}
 }
 
+// TODO: LevelDB -> Gets range of blocks
 func (chain *ChainT) Range(x, y BigInt) Objects {
 	return chain.blocks[x.Uint64():y.Uint64()]
 }
@@ -55,11 +57,13 @@ func (chain *ChainT) Length() BigInt {
 	return chain.length
 }
 
+// TODO: LevelDB -> Get last block
 func (chain *ChainT) LastHash() Hash {
 	last := chain.length.Uint64() - 1
 	return chain.blocks[last].Hash()
 }
 
+// TODO: LevelDB -> Push block
 func (chain *ChainT) Append(obj Object) error {
 	block := obj.(Block)
 	if block == nil {
@@ -80,6 +84,7 @@ func (chain *ChainT) Append(obj Object) error {
 	return nil
 }
 
+// TODO: LevelDB -> Search blocks
 func (chain *ChainT) Find(hash Hash) Object {
 	for _, block := range chain.blocks {
 		if bytes.Equal(hash, block.Hash()) {
@@ -89,6 +94,7 @@ func (chain *ChainT) Find(hash Hash) Object {
 	return nil
 }
 
+// TODO: LevelDB -> Search blocks
 func (chain *ChainT) IsValid() bool {
 	for _, block := range chain.blocks {
 		if !block.IsValid() {
@@ -101,6 +107,7 @@ func (chain *ChainT) IsValid() bool {
 	return true
 }
 
+// TODO: LevelDB -> Search account
 func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
 	for {
 		// get transactions from block
@@ -127,6 +134,7 @@ func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
 	}
 }
 
+// TODO: LevelDB -> Wrap() N blocks
 func (chain *ChainT) Wrap() []byte {
 	chainConv := &chainJSON{}
 
@@ -177,6 +185,7 @@ func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 	return finds[0]
 }
 
+// TODO: LevelDB -> Search blocks
 func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	var (
 		block = chain.Find(chain.LastHash()).(Block)

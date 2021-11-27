@@ -103,6 +103,10 @@ func (tx *TransactionT) Wrap() []byte {
 }
 
 func (tx *TransactionT) IsValid() bool {
+	if tx.Validator() == nil {
+		return false
+	}
+
 	if !bytes.Equal(tx.Hash(), tx.newHash()) {
 		return false
 	}
@@ -113,7 +117,7 @@ func (tx *TransactionT) IsValid() bool {
 func (tx *TransactionT) newHash() Hash {
 	return crypto.NewSHA256(bytes.Join(
 		[][]byte{
-			tx.validator.Bytes(),
+			tx.Validator().Bytes(),
 			tx.Nonce().Bytes(),
 			tx.Data(),
 		},
