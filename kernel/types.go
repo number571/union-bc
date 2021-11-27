@@ -51,7 +51,6 @@ type Laziness interface {
 }
 
 type Transaction interface {
-	Nonce() BigInt
 	Data() []byte
 
 	Wrapper
@@ -67,9 +66,7 @@ type Block interface {
 }
 
 type Chain interface {
-	NonceIsValid(Block, Transaction) bool
 	Laziness
-
 	Editor
 	Wrapper
 	Verifier

@@ -7,37 +7,50 @@ import (
 	"github.com/number571/laziest/kernel"
 )
 
-func main() {
-	privs := []kernel.PrivKey{
+func newPrivKeys() []kernel.PrivKey {
+	return []kernel.PrivKey{
 		crypto.NewPrivKey(kernel.KeySize),
 		crypto.NewPrivKey(kernel.KeySize),
 		crypto.NewPrivKey(kernel.KeySize),
 	}
+}
 
-	pubs := []kernel.PubKey{
+func newPubKeys(privs []kernel.PrivKey) []kernel.PubKey {
+	return []kernel.PubKey{
 		privs[0].PubKey(),
 		privs[1].PubKey(),
 		privs[2].PubKey(),
 	}
+}
 
-	txs := []kernel.Transaction{
-		kernel.NewTransaction(privs[0], kernel.NewInt("0"), []byte("hello, world!")),
-		kernel.NewTransaction(privs[1], kernel.NewInt("0"), []byte("aaabbbccc")),
-		kernel.NewTransaction(privs[2], kernel.NewInt("0"), []byte("qwerty")),
+func newTransactions(privs []kernel.PrivKey) []kernel.Transaction {
+	return []kernel.Transaction{
+		kernel.NewTransaction(privs[0], []byte("hello, world!")),
+		kernel.NewTransaction(privs[1], []byte("aaabbbccc")),
+		kernel.NewTransaction(privs[2], []byte("qwerty")),
 	}
+}
 
-	chain := kernel.NewChain(privs[0], txs)
+func main() {
+	var (
+		validators = newPrivKeys()
+		valpubs    = newPubKeys(validators)
+		txsgen     = newTransactions(validators)
+		txs        = newTransactions(newPrivKeys())
+	)
+
+	chain := kernel.NewChain(validators[0], txsgen)
 
 	for i := 0; i < 100; i++ {
 		blocks := []kernel.Block{
-			newBlock(privs[0], chain, txs),
-			newBlock(privs[1], chain, txs),
-			newBlock(privs[2], chain, txs),
+			newBlock(validators[0], chain, txs),
+			newBlock(validators[1], chain, txs),
+			newBlock(validators[2], chain, txs),
 		}
 
-		validator := chain.SelectLazy(pubs)
+		validator := chain.SelectLazy(valpubs)
 		for _, block := range blocks {
-			if validator.Address() == block.Validator().Address() {
+			if validator.Equal(block.Validator()) {
 				chain.Append(block)
 				break
 			}

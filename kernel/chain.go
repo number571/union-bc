@@ -20,7 +20,7 @@ type ChainT struct {
 }
 
 type chainJSON struct {
-	Blocks [][]byte
+	Blocks [][]byte `json:"blocks"`
 }
 
 // TODO: LevelDB -> Create DB
@@ -107,33 +107,6 @@ func (chain *ChainT) IsValid() bool {
 	return true
 }
 
-// TODO: LevelDB -> Search account
-func (chain *ChainT) NonceIsValid(block Block, checkTX Transaction) bool {
-	for {
-		// get transactions from block
-		objects := block.Range(NewInt("0"), block.Length())
-		if objects == nil {
-			return false
-		}
-
-		// search nonce in transactions
-		txs := objects.([]Transaction)
-		for _, tx := range txs {
-			validatorFound := checkTX.Validator().Address() == tx.Validator().Address()
-			if validatorFound {
-				return checkTX.Nonce().Cmp(tx.Nonce()) > 0
-			}
-		}
-
-		// next block
-		object := chain.Find(block.LastHash())
-		if object == nil {
-			return checkTX.Nonce().Cmp(NewInt("0")) == 0
-		}
-		block = object.(Block)
-	}
-}
-
 // TODO: LevelDB -> Wrap() N blocks
 func (chain *ChainT) Wrap() []byte {
 	chainConv := &chainJSON{}
@@ -193,7 +166,7 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	)
 
 	for {
-		if pub.Address() == block.Validator().Address() {
+		if pub.Equal(block.Validator()) {
 			return diff
 		}
 
@@ -204,7 +177,7 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 
 		txs := objects.([]Transaction)
 		for _, tx := range txs {
-			if pub.Address() == tx.Validator().Address() {
+			if pub.Equal(tx.Validator()) {
 				return diff
 			}
 		}

@@ -12,7 +12,6 @@ var (
 )
 
 type TransactionT struct {
-	nonce     []byte
 	data      []byte
 	hash      []byte
 	sign      []byte
@@ -20,14 +19,13 @@ type TransactionT struct {
 }
 
 type txJSON struct {
-	Nonce     []byte `json:"nonce"`
 	Data      []byte `json:"data"`
 	Hash      []byte `json:"hash"`
 	Sign      []byte `json:"sign"`
 	Validator []byte `json:"validator"`
 }
 
-func NewTransaction(priv PrivKey, nonce BigInt, data []byte) Transaction {
+func NewTransaction(priv PrivKey, data []byte) Transaction {
 	if priv == nil {
 		return nil
 	}
@@ -37,7 +35,6 @@ func NewTransaction(priv PrivKey, nonce BigInt, data []byte) Transaction {
 	}
 
 	tx := &TransactionT{
-		nonce:     nonce.Bytes(),
 		data:      data,
 		validator: priv.PubKey(),
 	}
@@ -53,7 +50,6 @@ func LoadTransaction(txbytes []byte) Transaction {
 	json.Unmarshal(txbytes, txConv)
 
 	tx := &TransactionT{
-		nonce:     txConv.Nonce,
 		data:      txConv.Data,
 		hash:      txConv.Hash,
 		sign:      txConv.Sign,
@@ -65,10 +61,6 @@ func LoadTransaction(txbytes []byte) Transaction {
 	}
 
 	return tx
-}
-
-func (tx *TransactionT) Nonce() BigInt {
-	return LoadInt(tx.nonce)
 }
 
 func (tx *TransactionT) Data() []byte {
@@ -89,7 +81,6 @@ func (tx *TransactionT) Validator() PubKey {
 
 func (tx *TransactionT) Wrap() []byte {
 	txConv := &txJSON{
-		Nonce:     tx.Nonce().Bytes(),
 		Data:      tx.Data(),
 		Hash:      tx.Hash(),
 		Sign:      tx.Sign(),
@@ -118,7 +109,6 @@ func (tx *TransactionT) newHash() Hash {
 	return crypto.NewSHA256(bytes.Join(
 		[][]byte{
 			tx.Validator().Bytes(),
-			tx.Nonce().Bytes(),
 			tx.Data(),
 		},
 		[]byte{},
