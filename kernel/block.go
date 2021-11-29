@@ -60,7 +60,7 @@ func LoadBlock(blockBytes []byte) Block {
 	return block
 }
 
-func (block *BlockT) Range(x, y BigInt) Objects {
+func (block *BlockT) Range(x, y BigInt) Object {
 	return block.txs[x.Uint64():y.Uint64()]
 }
 
@@ -74,9 +74,14 @@ func (block *BlockT) LastHash() Hash {
 
 func (block *BlockT) Append(obj Object) error {
 	tx := obj.(Transaction)
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+
 	if !tx.IsValid() {
 		return errors.New("tx is invalid")
 	}
+
 	block.txs = append(block.txs, tx)
 	return nil
 }
@@ -131,6 +136,7 @@ func (block *BlockT) Wrap() []byte {
 	if err != nil {
 		return nil
 	}
+
 	return blockBytes
 }
 
@@ -170,6 +176,7 @@ func (block *BlockT) newHash() Hash {
 		},
 		[]byte{},
 	)
+
 	for _, tx := range block.txs {
 		if !tx.IsValid() {
 			return nil
@@ -182,5 +189,6 @@ func (block *BlockT) newHash() Hash {
 			[]byte{},
 		)).Bytes()
 	}
+
 	return hash
 }

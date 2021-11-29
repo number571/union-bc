@@ -7,6 +7,56 @@ import (
 	"github.com/number571/laziest/kernel"
 )
 
+const (
+	ChainID = "init-chain"
+)
+
+func main() {
+	var (
+		validators = newPrivKeys()
+		valpubs    = newPubKeys(validators)
+		txsgen     = newTransactions(validators)
+		txs        = newTransactions(newPrivKeys())
+	)
+
+	// new genesis block
+	genesis := kernel.NewBlock([]byte(ChainID))
+	for _, tx := range txsgen {
+		genesis.Append(tx)
+	}
+	genesis.Accept(validators[0])
+
+	// new chain
+	chain := kernel.NewChain(genesis)
+
+	// append new blocks by PoL
+	for i := 0; i < 100; i++ {
+		blocks := []kernel.Block{
+			newBlock(validators[0], chain, txs),
+			newBlock(validators[1], chain, txs),
+			newBlock(validators[2], chain, txs),
+		}
+
+		// change validator
+		validator := chain.SelectLazy(valpubs)
+		for _, block := range blocks {
+			if validator.Equal(block.Validator()) {
+				chain.Append(block)
+				break
+			}
+		}
+	}
+
+	// print blocks validators
+	begin := kernel.NewInt("0")
+	end := chain.Length()
+
+	list := chain.Range(begin, end).([]kernel.Block)
+	for _, block := range list {
+		fmt.Println(block.Validator().Address())
+	}
+}
+
 func newPrivKeys() []kernel.PrivKey {
 	return []kernel.PrivKey{
 		crypto.NewPrivKey(kernel.KeySize),
@@ -31,47 +81,11 @@ func newTransactions(privs []kernel.PrivKey) []kernel.Transaction {
 	}
 }
 
-func main() {
-	var (
-		validators = newPrivKeys()
-		valpubs    = newPubKeys(validators)
-		txsgen     = newTransactions(validators)
-		txs        = newTransactions(newPrivKeys())
-	)
-
-	chain := kernel.NewChain(validators[0], txsgen)
-
-	for i := 0; i < 100; i++ {
-		blocks := []kernel.Block{
-			newBlock(validators[0], chain, txs),
-			newBlock(validators[1], chain, txs),
-			newBlock(validators[2], chain, txs),
-		}
-
-		validator := chain.SelectLazy(valpubs)
-		for _, block := range blocks {
-			if validator.Equal(block.Validator()) {
-				chain.Append(block)
-				break
-			}
-		}
-	}
-
-	begin := kernel.NewInt("0")
-	end := chain.Length()
-
-	list := chain.Range(begin, end).([]kernel.Block)
-	for _, block := range list {
-		fmt.Println(block.Validator().Address())
-	}
-}
-
 func newBlock(priv kernel.PrivKey, chain kernel.Chain, txs []kernel.Transaction) kernel.Block {
 	block := kernel.NewBlock(chain.LastHash())
 	for _, tx := range txs {
 		block.Append(tx)
 	}
-
 	block.Accept(priv)
 	return block
 }

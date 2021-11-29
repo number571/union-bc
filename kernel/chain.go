@@ -2,12 +2,9 @@ package kernel
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
-
-	"github.com/number571/gopeer/crypto"
 )
 
 var (
@@ -19,25 +16,8 @@ type ChainT struct {
 	blocks []Block
 }
 
-type chainJSON struct {
-	Blocks [][]byte `json:"blocks"`
-}
-
 // TODO: LevelDB -> Create DB
-func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
-	genesis := NewBlock([]byte(ChainID))
-	for _, tx := range txs {
-		err := genesis.Append(tx)
-		if err != nil {
-			return nil
-		}
-	}
-
-	err := genesis.Accept(priv)
-	if err != nil {
-		return nil
-	}
-
+func NewChain(genesis Block) Chain {
 	if !genesis.IsValid() {
 		return nil
 	}
@@ -49,7 +29,7 @@ func NewChain(priv crypto.PrivKey, txs []Transaction) Chain {
 }
 
 // TODO: LevelDB -> Gets range of blocks
-func (chain *ChainT) Range(x, y BigInt) Objects {
+func (chain *ChainT) Range(x, y BigInt) Object {
 	return chain.blocks[x.Uint64():y.Uint64()]
 }
 
@@ -107,22 +87,6 @@ func (chain *ChainT) IsValid() bool {
 	return true
 }
 
-// TODO: LevelDB -> Wrap() N blocks
-func (chain *ChainT) Wrap() []byte {
-	chainConv := &chainJSON{}
-
-	for _, block := range chain.blocks {
-		chainConv.Blocks = append(chainConv.Blocks, block.Wrap())
-	}
-
-	chainBytes, err := json.Marshal(chainConv)
-	if err != nil {
-		return nil
-	}
-
-	return chainBytes
-}
-
 func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 	var (
 		finds []PubKey
@@ -166,15 +130,18 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	)
 
 	for {
+		// find validator in block
 		if pub.Equal(block.Validator()) {
 			return diff
 		}
 
+		// get transactions
 		objects := block.Range(NewInt("0"), block.Length())
 		if objects == nil {
 			return NewInt("-1")
 		}
 
+		// find validator in transactions
 		txs := objects.([]Transaction)
 		for _, tx := range txs {
 			if pub.Equal(tx.Validator()) {
@@ -182,11 +149,14 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 			}
 		}
 
+		// next block
 		object := chain.Find(block.LastHash())
 		if object == nil {
 			return NewInt("-1")
 		}
 		block = object.(Block)
+
+		// diff = diff + 1
 		diff = diff.Inc()
 	}
 }

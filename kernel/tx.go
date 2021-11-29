@@ -86,10 +86,12 @@ func (tx *TransactionT) Wrap() []byte {
 		Sign:      tx.Sign(),
 		Validator: tx.Validator().Bytes(),
 	}
+
 	txbytes, err := json.Marshal(txConv)
 	if err != nil {
 		return nil
 	}
+
 	return txbytes
 }
 
