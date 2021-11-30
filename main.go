@@ -27,7 +27,7 @@ func main() {
 	genesis.Accept(validators[0])
 
 	// new chain
-	chain := kernel.NewChain(genesis)
+	chain := kernel.NewChain("data", genesis)
 
 	// append new blocks by PoL
 	for i := 0; i < 100; i++ {
@@ -48,10 +48,7 @@ func main() {
 	}
 
 	// print blocks validators
-	begin := kernel.NewInt("0")
-	end := chain.Length()
-
-	list := chain.Range(begin, end).([]kernel.Block)
+	list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
 	for _, block := range list {
 		fmt.Println(block.Validator().Address())
 	}

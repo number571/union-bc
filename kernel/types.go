@@ -38,9 +38,11 @@ type Wrapper interface {
 
 type BigInt interface {
 	Inc() BigInt
+	Sub(BigInt) BigInt
+	Cmp(BigInt) int
+
 	Bytes() []byte
 	String() string
-	Cmp(BigInt) int
 	Uint64() uint64
 }
 
@@ -60,6 +62,8 @@ type Block interface {
 }
 
 type Chain interface {
+	Cut(BigInt, BigInt) Chain
+
 	LazyInterval(PubKey) BigInt
 	SelectLazy([]PubKey) PubKey
 
