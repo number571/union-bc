@@ -66,7 +66,6 @@ func (node *Node) handleConn(id string) {
 		if msg == nil {
 			continue
 		}
-
 		node.send(msg)
 
 	}

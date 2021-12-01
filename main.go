@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"github.com/number571/gopeer/crypto"
 	"github.com/number571/laziest/kernel"
 )
@@ -48,10 +47,14 @@ func main() {
 	}
 
 	// print blocks validators
-	list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
+	/*list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
 	for _, block := range list {
-		fmt.Println(block.Validator().Address())
-	}
+		//fmt.Println(block.Validator().Address())
+	}*/
+	fmt.Println(chain.Length())
+	chain = chain.Cut(kernel.NewInt("10"))
+	fmt.Println(chain.Length())
+
 }
 
 func newPrivKeys() []kernel.PrivKey {

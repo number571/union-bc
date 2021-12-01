@@ -3,6 +3,7 @@ package kernel
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -16,6 +17,7 @@ var (
 type ChainT struct {
 	db *leveldb.DB
 }
+
 
 func NewChain(path string, genesis Block) Chain {
 	if !genesis.IsValid() {
@@ -145,8 +147,18 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 }
 
 // TODO: LevelDB -> Rollback
-func (chain *ChainT) Cut(begin, end BigInt) Chain {
-	return &ChainT{}
+func (chain *ChainT) Cut(amount BigInt ) Chain {
+	start := chain.Length().Sub(amount)
+	end := chain.Length()
+	for i:= NewInt(start.String()) ; i.Cmp(end) < 0 ; i.Inc() {
+		err := chain.db.Delete([]byte(i.String()) , nil )
+		if err!= nil {
+			fmt.Println(err)
+		}
+	}
+	chain.setLength(start)
+	return chain
+
 	// return &ChainT{
 	// 	length: end.Sub(begin),
 	// 	blocks: chain.blocks[begin.Uint64():end.Uint64()],

@@ -62,7 +62,7 @@ type Block interface {
 }
 
 type Chain interface {
-	Cut(BigInt, BigInt) Chain
+	Cut(BigInt) Chain
 
 	LazyInterval(PubKey) BigInt
 	SelectLazy([]PubKey) PubKey
