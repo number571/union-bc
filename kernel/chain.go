@@ -3,7 +3,8 @@ package kernel
 import (
 	"bytes"
 	"errors"
-	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,41 +16,92 @@ var (
 )
 
 type ChainT struct {
-	db *leveldb.DB
+	state    *leveldb.DB
+	journal  *leveldb.DB
+	accounts *leveldb.DB
 }
 
-
 func NewChain(path string, genesis Block) Chain {
+	var (
+		failNotExist = true
+		chain        *ChainT
+	)
+
+	var (
+		statePath    = filepath.Join(path, "state.db")
+		journalPath  = filepath.Join(path, "journal.db")
+		accountsPath = filepath.Join(path, "accounts.db")
+	)
+
+	defer func(chain Chain) {
+		if failNotExist {
+			return
+		}
+		chain.Close()
+		os.RemoveAll(statePath)
+		os.RemoveAll(journalPath)
+		os.RemoveAll(accountsPath)
+	}(chain)
+
 	if !genesis.IsValid() {
 		return nil
 	}
 
-	db, err := leveldb.OpenFile(path, nil)
+	state, err := leveldb.OpenFile(statePath, nil)
 	if err != nil {
+		failNotExist = false
 		return nil
 	}
 
-	chain := &ChainT{
-		db: db,
-	}
-
-	err = chain.setLength(NewInt("0"))
+	journal, err := leveldb.OpenFile(journalPath, nil)
 	if err != nil {
+		failNotExist = false
 		return nil
 	}
 
-	err = chain.setBlock(genesis)
+	accounts, err := leveldb.OpenFile(accountsPath, nil)
 	if err != nil {
+		failNotExist = false
+		return nil
+	}
+
+	chain = &ChainT{
+		state:    state,
+		journal:  journal,
+		accounts: accounts,
+	}
+
+	err = chain.setStateLength(NewInt("0"))
+	if err != nil {
+		failNotExist = false
+		return nil
+	}
+
+	err = chain.pushBlock(genesis)
+	if err != nil {
+		failNotExist = false
 		return nil
 	}
 
 	return chain
 }
 
+func (chain *ChainT) Close() {
+	if chain.state != nil {
+		chain.state.Close()
+	}
+	if chain.journal != nil {
+		chain.journal.Close()
+	}
+	if chain.accounts != nil {
+		chain.accounts.Close()
+	}
+}
+
 func (chain *ChainT) Range(x, y BigInt) Object {
 	blocks := []Block{}
 
-	for x.Cmp(y) < 0 {
+	for x.Cmp(y) <= 0 {
 		block := chain.getBlockByID(x)
 		if block == nil {
 			return nil
@@ -62,7 +114,7 @@ func (chain *ChainT) Range(x, y BigInt) Object {
 }
 
 func (chain *ChainT) Length() BigInt {
-	return chain.getLength()
+	return chain.getStateLength()
 }
 
 func (chain *ChainT) LastHash() Hash {
@@ -83,11 +135,19 @@ func (chain *ChainT) Append(obj Object) error {
 		return errors.New("relation is invalid")
 	}
 
-	return chain.setBlock(block)
+	return chain.pushBlock(block)
 }
 
 func (chain *ChainT) Find(hash Hash) Object {
-	return chain.getBlockByHash(hash)
+	block := chain.getBlockByHash(hash)
+	if block != nil {
+		return block
+	}
+	id := chain.getBlockIdByTxHash(hash)
+	if id == nil {
+		return nil
+	}
+	return chain.getBlockByID(id)
 }
 
 // TODO: LevelDB -> Search blocks
@@ -139,7 +199,7 @@ func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 }
 
 func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
-	id := chain.getUserAction(pub)
+	id := chain.getLazyByAddress(pub)
 	if id == nil {
 		return ZeroInt()
 	}
@@ -147,18 +207,8 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 }
 
 // TODO: LevelDB -> Rollback
-func (chain *ChainT) Cut(amount BigInt ) Chain {
-	start := chain.Length().Sub(amount)
-	end := chain.Length()
-	for i:= NewInt(start.String()) ; i.Cmp(end) < 0 ; i.Inc() {
-		err := chain.db.Delete([]byte(i.String()) , nil )
-		if err!= nil {
-			fmt.Println(err)
-		}
-	}
-	chain.setLength(start)
-	return chain
-
+func (chain *ChainT) Cut(begin, end BigInt) Chain {
+	return &ChainT{}
 	// return &ChainT{
 	// 	length: end.Sub(begin),
 	// 	blocks: chain.blocks[begin.Uint64():end.Uint64()],

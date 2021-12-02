@@ -7,7 +7,7 @@
 _obj
 _test
 .idea/
-data/
+chain/
 
 # Architecture specific extensions/prefixes
 *.[568vq]

@@ -6,22 +6,26 @@ import (
 )
 
 const (
-	KeyLength          = "chain.length"
-	KeyBlockID         = "chain.block.id.%s"
-	KeyBlockHash       = "chain.block.hash.%s"
-	KeyTransactionHash = "chain.tx.hash.%s"
-	KeyUserAction      = "chain.user.action.%s"
+	StateLength      = "state.length"
+	StateBlockByID   = "state.block[block_id=%s]"
+	StateBlockByHash = "state.block[block_hash=%s]"
+
+	JournalTxByHash        = "journal.tx[tx_hash=%s]"
+	JournalBlockIdByTxHash = "journal.block_id[tx_hash=%s]"
+
+	// TODO: Int[Lazy] -> []{Int[Block], Int[Lazy]}
+	AccountsLazyByAddress = "accounts.lazy[address=%s]"
 )
 
 // Length
 
-func (chain *ChainT) setLength(length BigInt) error {
-	return chain.setLevelDB(KeyLength, length.Bytes())
+func (chain *ChainT) setStateLength(length BigInt) error {
+	return chain.state.Put([]byte(StateLength), length.Bytes(), nil)
 }
 
-func (chain *ChainT) getLength() BigInt {
-	data := chain.getLevelDB(KeyLength)
-	if data == nil {
+func (chain *ChainT) getStateLength() BigInt {
+	data, err := chain.state.Get([]byte(StateLength), nil)
+	if err != nil {
 		return nil
 	}
 	return LoadInt(data)
@@ -29,52 +33,98 @@ func (chain *ChainT) getLength() BigInt {
 
 // Blocks
 
-func (chain *ChainT) setBlock(block Block) error {
-	length := chain.getLength()
+func (chain *ChainT) pushBlock(block Block) error {
+	type backLazyByAddressT struct {
+		pub      PubKey
+		interval BigInt
+	}
+
+	var (
+		failNotExist = true
+	)
+
+	var (
+		backTxByHash      []Hash
+		backLazyByAddress []backLazyByAddressT
+	)
+
+	length := chain.getStateLength()
 	if length == nil {
 		return errors.New("length is nil")
 	}
 
+	defer func() {
+		if failNotExist {
+			return
+		}
+
+		chain.setStateLength(length)
+		newLength := length.Inc()
+
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByID, newLength)), nil)
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByHash, block.Hash())), nil)
+
+		for _, hash := range backTxByHash {
+			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByHash, hash)), nil)
+		}
+
+		for _, lazy := range backLazyByAddress {
+			chain.setLazyByAddress(lazy.pub, lazy.interval)
+		}
+	}()
+
 	newLength := length.Inc()
-
-	err := chain.setLength(newLength)
+	err := chain.setStateLength(newLength)
 	if err != nil {
+		failNotExist = false
 		return err
 	}
 
-	// NEED ATOMIC!!!
-	err = chain.setLevelDB(fmt.Sprintf(KeyBlockID, newLength), block.Wrap())
+	err = chain.setStateBlockByID(newLength, block)
 	if err != nil {
+		failNotExist = false
 		return err
 	}
 
-	// NEED ATOMIC!!!
-	err = chain.setLevelDB(fmt.Sprintf(KeyUserAction, block.Validator().Bytes()), newLength.Bytes())
+	err = chain.setStateBlockByHash(block.Hash(), block)
 	if err != nil {
+		failNotExist = false
 		return err
 	}
 
-	// NEED ATOMIC!!!
-	err = chain.setLevelDB(fmt.Sprintf(KeyBlockHash, block.Hash()), block.Wrap())
+	err = chain.setLazyByAddress(block.Validator(), newLength)
 	if err != nil {
+		failNotExist = false
 		return err
 	}
 
-	begin := ZeroInt()
-	end := block.Length()
-	txs := block.Range(begin, end).([]Transaction)
+	txs := block.Range(ZeroInt(), block.Length()).([]Transaction)
 	if txs == nil {
+		failNotExist = false
 		return errors.New("txs is nil")
 	}
 
-	// NEED ATOMIC!!!
 	for _, tx := range txs {
-		err = chain.setTransaction(tx)
+		backTxByHash = append(backTxByHash, tx.Hash())
+		err = chain.setTxByHash(tx.Hash(), tx)
 		if err != nil {
+			failNotExist = false
 			return err
 		}
-		err = chain.setLevelDB(fmt.Sprintf(KeyUserAction, tx.Validator().Bytes()), newLength.Bytes())
+
+		err = chain.setBlockIdByTxHash(tx.Hash(), newLength)
 		if err != nil {
+			failNotExist = false
+			return err
+		}
+
+		pub := tx.Validator()
+		backLazyByAddress = append(backLazyByAddress, backLazyByAddressT{
+			pub, chain.getLazyByAddress(pub)})
+
+		err = chain.setLazyByAddress(pub, newLength)
+		if err != nil {
+			failNotExist = false
 			return err
 		}
 	}
@@ -82,17 +132,29 @@ func (chain *ChainT) setBlock(block Block) error {
 	return nil
 }
 
+func (chain *ChainT) setStateBlockByID(id BigInt, block Block) error {
+	return chain.state.Put(
+		[]byte(fmt.Sprintf(StateBlockByID, id)),
+		block.Wrap(), nil)
+}
+
+func (chain *ChainT) setStateBlockByHash(hash Hash, block Block) error {
+	return chain.state.Put(
+		[]byte(fmt.Sprintf(StateBlockByHash, hash)),
+		block.Wrap(), nil)
+}
+
 func (chain *ChainT) getBlockByID(id BigInt) Block {
-	data := chain.getLevelDB(fmt.Sprintf(KeyBlockID, id))
-	if data == nil {
+	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockByID, id)), nil)
+	if err != nil {
 		return nil
 	}
 	return LoadBlock(data)
 }
 
 func (chain *ChainT) getBlockByHash(hash Hash) Block {
-	data := chain.getLevelDB(fmt.Sprintf(KeyBlockHash, hash))
-	if data == nil {
+	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockByHash, hash)), nil)
+	if err != nil {
 		return nil
 	}
 	return LoadBlock(data)
@@ -100,38 +162,46 @@ func (chain *ChainT) getBlockByHash(hash Hash) Block {
 
 // Transactions
 
-func (chain *ChainT) setTransaction(tx Transaction) error {
-	return chain.setLevelDB(fmt.Sprintf(KeyTransactionHash, tx.Hash()), tx.Wrap())
+func (chain *ChainT) setTxByHash(hash Hash, tx Transaction) error {
+	return chain.journal.Put(
+		[]byte(fmt.Sprintf(JournalTxByHash, hash)),
+		tx.Wrap(), nil)
 }
 
-func (chain *ChainT) getTransaction(hash Hash) Transaction {
-	data := chain.getLevelDB(fmt.Sprintf(KeyTransactionHash, hash))
-	if data == nil {
+func (chain *ChainT) getTxByHash(hash Hash) Transaction {
+	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalTxByHash, hash)), nil)
+	if err != nil {
 		return nil
 	}
 	return LoadTransaction(data)
 }
 
-// Users
+func (chain *ChainT) setBlockIdByTxHash(hash Hash, id BigInt) error {
+	return chain.journal.Put(
+		[]byte(fmt.Sprintf(JournalBlockIdByTxHash, hash)),
+		id.Bytes(), nil)
+}
 
-func (chain *ChainT) getUserAction(pub PubKey) BigInt {
-	data := chain.getLevelDB(fmt.Sprintf(KeyUserAction, pub.Bytes()))
-	if data == nil {
+func (chain *ChainT) getBlockIdByTxHash(hash Hash) BigInt {
+	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalBlockIdByTxHash, hash)), nil)
+	if err != nil {
 		return nil
 	}
 	return LoadInt(data)
 }
 
-// LevelDB
+// Users
 
-func (chain *ChainT) getLevelDB(key string) []byte {
-	data, err := chain.db.Get([]byte(key), nil)
+func (chain *ChainT) setLazyByAddress(pub PubKey, id BigInt) error {
+	return chain.accounts.Put(
+		[]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())),
+		id.Bytes(), nil)
+}
+
+func (chain *ChainT) getLazyByAddress(pub PubKey) BigInt {
+	data, err := chain.accounts.Get([]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())), nil)
 	if err != nil {
 		return nil
 	}
-	return data
-}
-
-func (chain *ChainT) setLevelDB(key string, value []byte) error {
-	return chain.db.Put([]byte(key), value, nil)
+	return LoadInt(data)
 }
