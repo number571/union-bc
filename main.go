@@ -42,20 +42,43 @@ func main() {
 		for _, block := range blocks {
 			if validator.Equal(block.Validator()) {
 				chain.Append(block)
-				for _, pub := range valpubs {
-					fmt.Println(pub.Address(), chain.LazyInterval(pub))
-				}
-				fmt.Println()
+				// for _, pub := range valpubs {
+				// 	fmt.Println(pub.Address(), chain.LazyInterval(pub))
+				// }
+				// fmt.Println()
 				break
 			}
 		}
 	}
 
-	// // print blocks validators
-	// list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
-	// for _, block := range list {
-	// 	fmt.Println(block.Validator().Address())
-	// }
+	fmt.Println(chain.Length())
+	chain.RollBack(kernel.NewInt("90"))
+
+	// append new blocks by PoL
+	for i := 0; i < 10; i++ {
+		blocks := []kernel.Block{
+			newBlock(validators[0], chain, txs),
+			newBlock(validators[1], chain, txs),
+			newBlock(validators[2], chain, txs),
+		}
+
+		// change validator
+		validator := chain.SelectLazy(valpubs)
+		for _, block := range blocks {
+			if validator.Equal(block.Validator()) {
+				chain.Append(block)
+				break
+			}
+		}
+	}
+
+	// print blocks validators
+	list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
+	for _, block := range list {
+		fmt.Println(block.Validator().Address())
+	}
+
+	fmt.Println(chain.Length())
 }
 
 func newPrivKeys() []kernel.PrivKey {

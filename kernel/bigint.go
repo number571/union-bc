@@ -28,6 +28,10 @@ func (x *BigIntT) Inc() BigInt {
 	return (*BigIntT)((*big.Int)(x).Add((*big.Int)(x), big.NewInt(1)))
 }
 
+func (x *BigIntT) Dec() BigInt {
+	return (*BigIntT)((*big.Int)(x).Sub((*big.Int)(x), big.NewInt(1)))
+}
+
 func (x *BigIntT) Sub(y BigInt) BigInt {
 	yn := (*big.Int)((y).(*BigIntT))
 	return (*BigIntT)((*big.Int)(x).Sub((*big.Int)(x), yn))

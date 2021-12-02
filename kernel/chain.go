@@ -3,6 +3,7 @@ package kernel
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -98,6 +99,7 @@ func (chain *ChainT) Close() {
 	}
 }
 
+// range is [x, y]
 func (chain *ChainT) Range(x, y BigInt) Object {
 	blocks := []Block{}
 
@@ -186,6 +188,10 @@ func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 
 	lenpub := uint64(len(finds))
 
+	if lenpub == 0 {
+		panic("length of validators = nil")
+	}
+
 	if lenpub > 1 {
 		sort.SliceStable(finds, func(i, j int) bool {
 			return strings.Compare(finds[i].Address(), finds[j].Address()) < 0
@@ -207,10 +213,49 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 }
 
 // TODO: LevelDB -> Rollback
-func (chain *ChainT) Cut(begin, end BigInt) Chain {
-	return &ChainT{}
-	// return &ChainT{
-	// 	length: end.Sub(begin),
-	// 	blocks: chain.blocks[begin.Uint64():end.Uint64()],
-	// }
+func (chain *ChainT) RollBack(id BigInt) error {
+	for i := chain.Length().Sub(id).Inc(); i.Cmp(chain.Length()) < 0; i = i.Inc() {
+		block := chain.getStateBlockByID(i)
+		if block == nil {
+			return fmt.Errorf("block is nil")
+		}
+
+		objs := block.Range(ZeroInt(), block.Length())
+		if objs == nil {
+			return fmt.Errorf("txs is nil")
+		}
+
+		txs := objs.([]Transaction)
+		for _, tx := range txs {
+			pub := tx.Validator()
+			lazyHistory := chain.getAccountsLazyByAddress(pub)
+
+			for j := len(lazyHistory) - 1; j > 0; j-- {
+				lazy := LoadInt(lazyHistory[j])
+				if lazy.Cmp(id) < 0 {
+					chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
+					break
+				}
+			}
+
+			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByTxHash, tx.Hash())), nil)
+		}
+
+		pub := block.Validator()
+		lazyHistory := chain.getAccountsLazyByAddress(pub)
+
+		for j := len(lazyHistory) - 1; j > 0; j-- {
+			lazy := LoadInt(lazyHistory[j])
+			if lazy.Cmp(id) < 0 {
+				chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
+				break
+			}
+		}
+
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByBlockID, i)), nil)
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockIdByBlockHash, block.Hash())), nil)
+	}
+
+	chain.setStateLength(chain.Length().Sub(id))
+	return nil
 }

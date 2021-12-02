@@ -14,7 +14,6 @@ const (
 	JournalTxByTxHash      = "journal.tx[tx_hash=%s]"
 	JournalBlockIdByTxHash = "journal.block_id[tx_hash=%s]"
 
-	// TODO: Int[Lazy] -> []{Int[Block], Int[Lazy]}
 	AccountsLazyByAddress = "accounts.lazy[address=%s]"
 )
 
