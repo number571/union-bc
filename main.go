@@ -51,6 +51,8 @@ func main() {
 		}
 	}
 
+	fmt.Println(chain.IsValid())
+
 	fmt.Println(chain.Length())
 	chain.RollBack(kernel.NewInt("90"))
 
@@ -79,6 +81,7 @@ func main() {
 	}
 
 	fmt.Println(chain.Length())
+
 }
 
 func newPrivKeys() []kernel.PrivKey {

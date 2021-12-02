@@ -61,7 +61,7 @@ func LoadBlock(blockBytes []byte) Block {
 }
 
 func (block *BlockT) Range(x, y BigInt) Object {
-	return block.txs[x.Uint64():y.Uint64()]
+	return block.txs[x.Dec().Uint64():y.Uint64()]
 }
 
 func (block *BlockT) Length() BigInt {

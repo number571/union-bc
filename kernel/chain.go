@@ -103,6 +103,10 @@ func (chain *ChainT) Close() {
 func (chain *ChainT) Range(x, y BigInt) Object {
 	blocks := []Block{}
 
+	if x.Cmp(chain.Length()) > 0 {
+		return nil
+	}
+
 	for x.Cmp(y) <= 0 {
 		block := chain.getStateBlockByID(x)
 		if block == nil {
@@ -156,11 +160,12 @@ func (chain *ChainT) Find(hash Hash) Object {
 
 // TODO: LevelDB -> Search blocks
 func (chain *ChainT) IsValid() bool {
-	// for _, block := range chain.blocks {
+	// blocks := chain.Range(NewInt("1"), chain.Length()).([]Block)
+	// for _, block := range blocks {
 	// 	if !block.IsValid() {
 	// 		return false
 	// 	}
-	// 	if !bytes.Equal(block.LastHash(), chain.LastHash()) {
+	// 	if !bytes.Equal(chain.LastHash(), block.LastHash()) {
 	// 		return false
 	// 	}
 	// }
@@ -222,12 +227,7 @@ func (chain *ChainT) RollBack(id BigInt) error {
 			return fmt.Errorf("block is nil")
 		}
 
-		objs := block.Range(ZeroInt(), block.Length())
-		if objs == nil {
-			return fmt.Errorf("txs is nil")
-		}
-
-		txs := objs.([]Transaction)
+		txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
 		for _, tx := range txs {
 			pub := tx.Validator()
 			lazyHistory := chain.getAccountsLazyByAddress(pub)
