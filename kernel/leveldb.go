@@ -27,10 +27,8 @@ func (chain *ChainT) pushBlock(block Block) error {
 	}
 
 	var (
-		failNotExist = true
-	)
-
-	var (
+		failNotExist      = true
+		mappingPubs       = make(map[string]bool)
 		backTxByHash      []Hash
 		backLazyByAddress []backLazyByAddressT
 	)
@@ -106,10 +104,13 @@ func (chain *ChainT) pushBlock(block Block) error {
 		}
 
 		pub := tx.Validator()
+		addr := pub.Address()
 
-		// TODO: check if pub key already exist in txs
-		backLazyByAddress = append(backLazyByAddress,
-			backLazyByAddressT{pub, chain.getAccountsLazyByAddress(pub)})
+		if _, ok := mappingPubs[addr]; !ok {
+			mappingPubs[addr] = true
+			backLazyByAddress = append(backLazyByAddress,
+				backLazyByAddressT{pub, chain.getAccountsLazyByAddress(pub)})
+		}
 
 		err = chain.setAccountsLazyByAddress(pub, newLength)
 		if err != nil {

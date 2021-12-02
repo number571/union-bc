@@ -40,13 +40,12 @@ func main() {
 		// change validator
 		validator := chain.SelectLazy(valpubs)
 		for _, block := range blocks {
-			for _, pub := range valpubs {
-				fmt.Println(pub.Address(), chain.LazyInterval(pub))
-			}
-			fmt.Println()
-
 			if validator.Equal(block.Validator()) {
 				chain.Append(block)
+				for _, pub := range valpubs {
+					fmt.Println(pub.Address(), chain.LazyInterval(pub))
+				}
+				fmt.Println()
 				break
 			}
 		}
