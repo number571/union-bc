@@ -145,10 +145,12 @@ func (chain *ChainT) Find(hash Hash) Object {
 	if id != nil {
 		return chain.getStateBlockByID(id)
 	}
+
 	id = chain.getJournalBlockIdByTxHash(hash)
 	if id != nil {
 		return chain.getStateBlockByID(id)
 	}
+
 	return nil
 }
 

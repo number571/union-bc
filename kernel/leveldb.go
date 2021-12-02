@@ -171,6 +171,8 @@ func (chain *ChainT) setJournalTxByTxHash(hash Hash, tx Transaction) error {
 		tx.Wrap(), nil)
 }
 
+// Function is unused!
+// Get tx from chain = chain.Find(txHash) = block -> block.Find(txHash) = hash;
 func (chain *ChainT) getJournalTxByTxHash(hash Hash) Transaction {
 	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalTxByTxHash, hash)), nil)
 	if err != nil {
