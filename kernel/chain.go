@@ -102,7 +102,7 @@ func (chain *ChainT) Range(x, y BigInt) Object {
 	blocks := []Block{}
 
 	for x.Cmp(y) <= 0 {
-		block := chain.getBlockByID(x)
+		block := chain.getStateBlockByID(x)
 		if block == nil {
 			return nil
 		}
@@ -118,7 +118,7 @@ func (chain *ChainT) Length() BigInt {
 }
 
 func (chain *ChainT) LastHash() Hash {
-	return chain.getBlockByID(chain.Length()).Hash()
+	return chain.getStateBlockByID(chain.Length()).Hash()
 }
 
 func (chain *ChainT) Append(obj Object) error {
@@ -139,15 +139,15 @@ func (chain *ChainT) Append(obj Object) error {
 }
 
 func (chain *ChainT) Find(hash Hash) Object {
-	block := chain.getBlockByHash(hash)
-	if block != nil {
-		return block
+	id := chain.getStateBlockIdByHash(hash)
+	if id != nil {
+		return chain.getStateBlockByID(id)
 	}
-	id := chain.getBlockIdByTxHash(hash)
-	if id == nil {
-		return nil
+	id = chain.getJournalBlockIdByTxHash(hash)
+	if id != nil {
+		return chain.getStateBlockByID(id)
 	}
-	return chain.getBlockByID(id)
+	return nil
 }
 
 // TODO: LevelDB -> Search blocks
@@ -199,7 +199,7 @@ func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 }
 
 func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
-	id := chain.getLazyByAddress(pub)
+	id := chain.getAccountsLazyByAddress(pub)
 	if id == nil {
 		return ZeroInt()
 	}

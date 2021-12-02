@@ -6,30 +6,16 @@ import (
 )
 
 const (
-	StateLength      = "state.length"
-	StateBlockByID   = "state.block[block_id=%s]"
-	StateBlockByHash = "state.block[block_hash=%s]"
+	StateLength             = "state.length"
+	StateBlockByBlockID     = "state.block[block_id=%s]"
+	StateBlockIdByBlockHash = "state.block_id[block_hash=%s]"
 
-	JournalTxByHash        = "journal.tx[tx_hash=%s]"
+	JournalTxByTxHash      = "journal.tx[tx_hash=%s]"
 	JournalBlockIdByTxHash = "journal.block_id[tx_hash=%s]"
 
 	// TODO: Int[Lazy] -> []{Int[Block], Int[Lazy]}
 	AccountsLazyByAddress = "accounts.lazy[address=%s]"
 )
-
-// Length
-
-func (chain *ChainT) setStateLength(length BigInt) error {
-	return chain.state.Put([]byte(StateLength), length.Bytes(), nil)
-}
-
-func (chain *ChainT) getStateLength() BigInt {
-	data, err := chain.state.Get([]byte(StateLength), nil)
-	if err != nil {
-		return nil
-	}
-	return LoadInt(data)
-}
 
 // Blocks
 
@@ -61,15 +47,15 @@ func (chain *ChainT) pushBlock(block Block) error {
 		chain.setStateLength(length)
 		newLength := length.Inc()
 
-		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByID, newLength)), nil)
-		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByHash, block.Hash())), nil)
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByBlockID, newLength)), nil)
+		chain.state.Delete([]byte(fmt.Sprintf(StateBlockIdByBlockHash, block.Hash())), nil)
 
 		for _, hash := range backTxByHash {
-			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByHash, hash)), nil)
+			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByTxHash, hash)), nil)
 		}
 
 		for _, lazy := range backLazyByAddress {
-			chain.setLazyByAddress(lazy.pub, lazy.interval)
+			chain.setAccountsLazyByAddress(lazy.pub, lazy.interval)
 		}
 	}()
 
@@ -86,13 +72,13 @@ func (chain *ChainT) pushBlock(block Block) error {
 		return err
 	}
 
-	err = chain.setStateBlockByHash(block.Hash(), block)
+	err = chain.setStateBlockIdByHash(block.Hash(), newLength)
 	if err != nil {
 		failNotExist = false
 		return err
 	}
 
-	err = chain.setLazyByAddress(block.Validator(), newLength)
+	err = chain.setAccountsLazyByAddress(block.Validator(), newLength)
 	if err != nil {
 		failNotExist = false
 		return err
@@ -106,13 +92,13 @@ func (chain *ChainT) pushBlock(block Block) error {
 
 	for _, tx := range txs {
 		backTxByHash = append(backTxByHash, tx.Hash())
-		err = chain.setTxByHash(tx.Hash(), tx)
+		err = chain.setJournalTxByTxHash(tx.Hash(), tx)
 		if err != nil {
 			failNotExist = false
 			return err
 		}
 
-		err = chain.setBlockIdByTxHash(tx.Hash(), newLength)
+		err = chain.setJournalBlockIdByTxHash(tx.Hash(), newLength)
 		if err != nil {
 			failNotExist = false
 			return err
@@ -120,9 +106,9 @@ func (chain *ChainT) pushBlock(block Block) error {
 
 		pub := tx.Validator()
 		backLazyByAddress = append(backLazyByAddress, backLazyByAddressT{
-			pub, chain.getLazyByAddress(pub)})
+			pub, chain.getAccountsLazyByAddress(pub)})
 
-		err = chain.setLazyByAddress(pub, newLength)
+		err = chain.setAccountsLazyByAddress(pub, newLength)
 		if err != nil {
 			failNotExist = false
 			return err
@@ -134,55 +120,69 @@ func (chain *ChainT) pushBlock(block Block) error {
 
 func (chain *ChainT) setStateBlockByID(id BigInt, block Block) error {
 	return chain.state.Put(
-		[]byte(fmt.Sprintf(StateBlockByID, id)),
+		[]byte(fmt.Sprintf(StateBlockByBlockID, id)),
 		block.Wrap(), nil)
 }
 
-func (chain *ChainT) setStateBlockByHash(hash Hash, block Block) error {
+func (chain *ChainT) getStateBlockByID(id BigInt) Block {
+	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockByBlockID, id)), nil)
+	if err != nil {
+		return nil
+	}
+	return LoadBlock(data)
+}
+
+func (chain *ChainT) setStateBlockIdByHash(hash Hash, id BigInt) error {
 	return chain.state.Put(
-		[]byte(fmt.Sprintf(StateBlockByHash, hash)),
-		block.Wrap(), nil)
+		[]byte(fmt.Sprintf(StateBlockIdByBlockHash, hash)),
+		id.Bytes(), nil)
 }
 
-func (chain *ChainT) getBlockByID(id BigInt) Block {
-	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockByID, id)), nil)
+func (chain *ChainT) getStateBlockIdByHash(hash Hash) BigInt {
+	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockIdByBlockHash, hash)), nil)
 	if err != nil {
 		return nil
 	}
-	return LoadBlock(data)
+	return LoadInt(data)
 }
 
-func (chain *ChainT) getBlockByHash(hash Hash) Block {
-	data, err := chain.state.Get([]byte(fmt.Sprintf(StateBlockByHash, hash)), nil)
+// Length
+
+func (chain *ChainT) setStateLength(length BigInt) error {
+	return chain.state.Put([]byte(StateLength), length.Bytes(), nil)
+}
+
+func (chain *ChainT) getStateLength() BigInt {
+	data, err := chain.state.Get([]byte(StateLength), nil)
 	if err != nil {
 		return nil
 	}
-	return LoadBlock(data)
+	return LoadInt(data)
 }
 
 // Transactions
 
-func (chain *ChainT) setTxByHash(hash Hash, tx Transaction) error {
+func (chain *ChainT) setJournalTxByTxHash(hash Hash, tx Transaction) error {
 	return chain.journal.Put(
-		[]byte(fmt.Sprintf(JournalTxByHash, hash)),
+		[]byte(fmt.Sprintf(JournalTxByTxHash, hash)),
 		tx.Wrap(), nil)
 }
 
-func (chain *ChainT) getTxByHash(hash Hash) Transaction {
-	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalTxByHash, hash)), nil)
+func (chain *ChainT) getJournalTxByTxHash(hash Hash) Transaction {
+	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalTxByTxHash, hash)), nil)
 	if err != nil {
 		return nil
 	}
 	return LoadTransaction(data)
 }
 
-func (chain *ChainT) setBlockIdByTxHash(hash Hash, id BigInt) error {
+func (chain *ChainT) setJournalBlockIdByTxHash(hash Hash, id BigInt) error {
 	return chain.journal.Put(
 		[]byte(fmt.Sprintf(JournalBlockIdByTxHash, hash)),
 		id.Bytes(), nil)
 }
 
-func (chain *ChainT) getBlockIdByTxHash(hash Hash) BigInt {
+func (chain *ChainT) getJournalBlockIdByTxHash(hash Hash) BigInt {
 	data, err := chain.journal.Get([]byte(fmt.Sprintf(JournalBlockIdByTxHash, hash)), nil)
 	if err != nil {
 		return nil
@@ -192,13 +192,13 @@ func (chain *ChainT) getBlockIdByTxHash(hash Hash) BigInt {
 
 // Users
 
-func (chain *ChainT) setLazyByAddress(pub PubKey, id BigInt) error {
+func (chain *ChainT) setAccountsLazyByAddress(pub PubKey, id BigInt) error {
 	return chain.accounts.Put(
 		[]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())),
 		id.Bytes(), nil)
 }
 
-func (chain *ChainT) getLazyByAddress(pub PubKey) BigInt {
+func (chain *ChainT) getAccountsLazyByAddress(pub PubKey) BigInt {
 	data, err := chain.accounts.Get([]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())), nil)
 	if err != nil {
 		return nil
