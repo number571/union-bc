@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -21,8 +22,8 @@ const (
 
 func (chain *ChainT) pushBlock(block Block) error {
 	type backLazyByAddressT struct {
-		pub      PubKey
-		interval BigInt
+		pub     PubKey
+		history LazyHistory
 	}
 
 	var (
@@ -55,7 +56,7 @@ func (chain *ChainT) pushBlock(block Block) error {
 		}
 
 		for _, lazy := range backLazyByAddress {
-			chain.setAccountsLazyByAddress(lazy.pub, lazy.interval)
+			chain.resetAccountsLazyByAddress(lazy.pub, lazy.history)
 		}
 	}()
 
@@ -105,8 +106,10 @@ func (chain *ChainT) pushBlock(block Block) error {
 		}
 
 		pub := tx.Validator()
-		backLazyByAddress = append(backLazyByAddress, backLazyByAddressT{
-			pub, chain.getAccountsLazyByAddress(pub)})
+
+		// TODO: check if pub key already exist in txs
+		backLazyByAddress = append(backLazyByAddress,
+			backLazyByAddressT{pub, chain.getAccountsLazyByAddress(pub)})
 
 		err = chain.setAccountsLazyByAddress(pub, newLength)
 		if err != nil {
@@ -192,16 +195,66 @@ func (chain *ChainT) getJournalBlockIdByTxHash(hash Hash) BigInt {
 
 // Users
 
+// [][]byte = []BigInt
+type LazyHistory [][]byte
+
 func (chain *ChainT) setAccountsLazyByAddress(pub PubKey, id BigInt) error {
+	lazyHistory := chain.getAccountsLazyByAddress(pub)
+	if lazyHistory == nil {
+		lazyHistory = LazyHistory{}
+	}
+
+	lazyHistory = append(lazyHistory, id.Bytes())
+	data, err := json.Marshal(lazyHistory)
+	if err != nil {
+		return err
+	}
+
 	return chain.accounts.Put(
 		[]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())),
-		id.Bytes(), nil)
+		data, nil)
 }
 
-func (chain *ChainT) getAccountsLazyByAddress(pub PubKey) BigInt {
+func (chain *ChainT) resetAccountsLazyByAddress(pub PubKey, lazyHistory LazyHistory) error {
+	data, err := json.Marshal(lazyHistory)
+	if err != nil {
+		return err
+	}
+
+	return chain.accounts.Put(
+		[]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())),
+		data, nil)
+}
+
+func (chain *ChainT) getAccountsLazyByAddress(pub PubKey) LazyHistory {
+	var (
+		lazyHistory = LazyHistory{}
+	)
+
 	data, err := chain.accounts.Get([]byte(fmt.Sprintf(AccountsLazyByAddress, pub.Address())), nil)
 	if err != nil {
 		return nil
 	}
-	return LoadInt(data)
+
+	err = json.Unmarshal(data, &lazyHistory)
+	if err != nil {
+		return nil
+	}
+
+	if len(lazyHistory) == 0 {
+		return nil
+	}
+
+	if len(lazyHistory) > 100 {
+		lazyHistory = lazyHistory[len(lazyHistory)-100:]
+	}
+
+	return lazyHistory
+}
+
+func (lazyHistory LazyHistory) last() BigInt {
+	if len(lazyHistory) == 0 {
+		return nil
+	}
+	return LoadInt(lazyHistory[len(lazyHistory)-1])
 }

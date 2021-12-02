@@ -40,6 +40,11 @@ func main() {
 		// change validator
 		validator := chain.SelectLazy(valpubs)
 		for _, block := range blocks {
+			for _, pub := range valpubs {
+				fmt.Println(pub.Address(), chain.LazyInterval(pub))
+			}
+			fmt.Println()
+
 			if validator.Equal(block.Validator()) {
 				chain.Append(block)
 				break
@@ -47,11 +52,11 @@ func main() {
 		}
 	}
 
-	// print blocks validators
-	list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
-	for _, block := range list {
-		fmt.Println(block.Validator().Address())
-	}
+	// // print blocks validators
+	// list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
+	// for _, block := range list {
+	// 	fmt.Println(block.Validator().Address())
+	// }
 }
 
 func newPrivKeys() []kernel.PrivKey {

@@ -199,11 +199,11 @@ func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
 }
 
 func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
-	id := chain.getAccountsLazyByAddress(pub)
-	if id == nil {
+	lazyHistory := chain.getAccountsLazyByAddress(pub)
+	if lazyHistory == nil {
 		return ZeroInt()
 	}
-	return chain.Length().Sub(id)
+	return chain.Length().Sub(lazyHistory.last())
 }
 
 // TODO: LevelDB -> Rollback
