@@ -25,16 +25,16 @@ func ZeroInt() BigInt {
 }
 
 func (x *BigIntT) Inc() BigInt {
-	return (*BigIntT)((*big.Int)(x).Add((*big.Int)(x), big.NewInt(1)))
+	return (*BigIntT)(big.NewInt(0).Add((*big.Int)(x), big.NewInt(1)))
 }
 
 func (x *BigIntT) Dec() BigInt {
-	return (*BigIntT)((*big.Int)(x).Sub((*big.Int)(x), big.NewInt(1)))
+	return (*BigIntT)(big.NewInt(0).Sub((*big.Int)(x), big.NewInt(1)))
 }
 
 func (x *BigIntT) Sub(y BigInt) BigInt {
 	yn := (*big.Int)((y).(*BigIntT))
-	return (*BigIntT)((*big.Int)(x).Sub((*big.Int)(x), yn))
+	return (*BigIntT)(big.NewInt(0).Sub((*big.Int)(x), yn))
 }
 
 func (x *BigIntT) Cmp(y BigInt) int {

@@ -67,7 +67,8 @@ type Chain interface {
 	LazyInterval(PubKey) BigInt
 	SelectLazy([]PubKey) PubKey
 
-	RollBack(BigInt)
+	TryMerge(BigInt, []Block) error
+	RollBack(BigInt) error
 	Close()
 
 	Editor

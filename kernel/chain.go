@@ -218,11 +218,21 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	return chain.Length().Sub(lazyHistory.last())
 }
 
-func (chain *ChainT) RollBack(id BigInt) {
+func (chain *ChainT) TryMerge(startBlock BigInt, blocks []Block) error {
+	// lazyHistory := chain.splitBeforeAccountsLazyByAddress(pub, startBlock)
+	// _ = lazyHistory
+	return nil
+}
+
+func (chain *ChainT) RollBack(num BigInt) error {
 	var (
-		mappingPubs = make(map[string]bool)
-		startBlock  = chain.Length().Sub(id)
+		mapping    = make(map[string]bool)
+		startBlock = chain.Length().Sub(num)
 	)
+
+	if startBlock.Cmp(ZeroInt()) < 0 {
+		return fmt.Errorf("chain length < num")
+	}
 
 	for i := startBlock.Inc(); i.Cmp(chain.Length()) <= 0; i = i.Inc() {
 		block := chain.getStateBlockByID(i)
@@ -232,28 +242,27 @@ func (chain *ChainT) RollBack(id BigInt) {
 
 		txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
 		for _, tx := range txs {
-			pub, addr := tx.Validator(), tx.Validator().Address()
-			lazyHistory := chain.getAccountsLazyByAddress(pub)
-
-			if _, ok := mappingPubs[addr]; !ok {
-				mappingPubs[addr] = true
-				chain.splitAccountsLazyByAddress(pub, startBlock, lazyHistory)
-			}
+			chain.updateLazyHistory(tx, startBlock, mapping)
 
 			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByTxHash, tx.Hash())), nil)
 		}
 
-		pub, addr := block.Validator(), block.Validator().Address()
-		lazyHistory := chain.getAccountsLazyByAddress(pub)
-
-		if _, ok := mappingPubs[addr]; !ok {
-			mappingPubs[addr] = true
-			chain.splitAccountsLazyByAddress(pub, startBlock, lazyHistory)
-		}
+		chain.updateLazyHistory(block, startBlock, mapping)
 
 		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByBlockID, i)), nil)
 		chain.state.Delete([]byte(fmt.Sprintf(StateBlockIdByBlockHash, block.Hash())), nil)
 	}
 
-	chain.setStateLength(chain.Length().Sub(id))
+	chain.setStateLength(startBlock)
+	return nil
+}
+
+func (chain *ChainT) updateLazyHistory(obj Signifier, startBlock BigInt, mapping map[string]bool) {
+	pub, addr := obj.Validator(), obj.Validator().Address()
+
+	if _, ok := mapping[addr]; !ok {
+		newLazyHistory := chain.splitBeforeAccountsLazyByAddress(pub, startBlock)
+		chain.resetAccountsLazyByAddress(pub, newLazyHistory)
+		mapping[addr] = true
+	}
 }

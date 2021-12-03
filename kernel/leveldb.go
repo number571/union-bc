@@ -250,15 +250,17 @@ func (chain *ChainT) getAccountsLazyByAddress(pub PubKey) LazyHistory {
 	return lazyHistory
 }
 
-func (chain *ChainT) splitAccountsLazyByAddress(pub PubKey, id BigInt, lazyHistory LazyHistory) {
+func (chain *ChainT) splitBeforeAccountsLazyByAddress(pub PubKey, id BigInt) LazyHistory {
+	lazyHistory := chain.getAccountsLazyByAddress(pub)
+
 	for j := len(lazyHistory) - 1; j > 0; j-- {
 		lazy := LoadInt(lazyHistory[j])
 		if lazy.Cmp(id) < 0 {
-			chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
-			return
+			return lazyHistory[:j]
 		}
 	}
-	chain.resetAccountsLazyByAddress(pub, LazyHistory{})
+
+	return LazyHistory{}
 }
 
 func (lazyHistory LazyHistory) last() BigInt {
