@@ -67,9 +67,11 @@ type Chain interface {
 	LazyInterval(PubKey) BigInt
 	SelectLazy([]PubKey) PubKey
 
-	TryMerge(BigInt, []Block) error
 	RollBack(BigInt) error
+	Snapshot(path string) Chain
 	Close()
+
+	// TryMerge(BigInt, []Block) error
 
 	Editor
 	Verifier

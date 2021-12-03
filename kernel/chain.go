@@ -17,6 +17,7 @@ var (
 )
 
 type ChainT struct {
+	path     string
 	state    *leveldb.DB
 	journal  *leveldb.DB
 	accounts *leveldb.DB
@@ -44,6 +45,10 @@ func NewChain(path string, genesis Block) Chain {
 		os.RemoveAll(accountsPath)
 	}(chain)
 
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		os.RemoveAll(path)
+	}
+
 	if !genesis.IsValid() {
 		return nil
 	}
@@ -67,6 +72,7 @@ func NewChain(path string, genesis Block) Chain {
 	}
 
 	chain = &ChainT{
+		path:     path,
 		state:    state,
 		journal:  journal,
 		accounts: accounts,
@@ -85,6 +91,36 @@ func NewChain(path string, genesis Block) Chain {
 	}
 
 	return chain
+}
+
+func LoadChain(path string) Chain {
+	var (
+		statePath    = filepath.Join(path, "state.db")
+		journalPath  = filepath.Join(path, "journal.db")
+		accountsPath = filepath.Join(path, "accounts.db")
+	)
+
+	state, err := leveldb.OpenFile(statePath, nil)
+	if err != nil {
+		return nil
+	}
+
+	journal, err := leveldb.OpenFile(journalPath, nil)
+	if err != nil {
+		return nil
+	}
+
+	accounts, err := leveldb.OpenFile(accountsPath, nil)
+	if err != nil {
+		return nil
+	}
+
+	return &ChainT{
+		path:     path,
+		state:    state,
+		journal:  journal,
+		accounts: accounts,
+	}
 }
 
 func (chain *ChainT) Close() {
@@ -218,12 +254,6 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	return chain.Length().Sub(lazyHistory.last())
 }
 
-func (chain *ChainT) TryMerge(startBlock BigInt, blocks []Block) error {
-	// lazyHistory := chain.splitBeforeAccountsLazyByAddress(pub, startBlock)
-	// _ = lazyHistory
-	return nil
-}
-
 func (chain *ChainT) RollBack(num BigInt) error {
 	var (
 		mapping    = make(map[string]bool)
@@ -257,12 +287,33 @@ func (chain *ChainT) RollBack(num BigInt) error {
 	return nil
 }
 
+func (chain *ChainT) Snapshot(path string) Chain {
+	err := copyDir(path, chain.path)
+	if err != nil {
+		return nil
+	}
+	return LoadChain(path)
+}
+
 func (chain *ChainT) updateLazyHistory(obj Signifier, startBlock BigInt, mapping map[string]bool) {
 	pub, addr := obj.Validator(), obj.Validator().Address()
 
 	if _, ok := mapping[addr]; !ok {
-		newLazyHistory := chain.splitBeforeAccountsLazyByAddress(pub, startBlock)
+		newLazyHistory := chain.splitBeforeLazyHistory(pub, startBlock)
 		chain.resetAccountsLazyByAddress(pub, newLazyHistory)
 		mapping[addr] = true
 	}
+}
+
+func (chain *ChainT) splitBeforeLazyHistory(pub PubKey, id BigInt) LazyHistory {
+	lazyHistory := chain.getAccountsLazyByAddress(pub)
+
+	for j := len(lazyHistory) - 1; j > 0; j-- {
+		lazy := LoadInt(lazyHistory[j])
+		if lazy.Cmp(id) < 0 {
+			return lazyHistory[:j]
+		}
+	}
+
+	return LazyHistory{}
 }

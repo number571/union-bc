@@ -90,6 +90,9 @@ func main() {
 	pub = genegisValidator.PubKey()
 	fmt.Println(pub.Address(), chain.LazyInterval(pub))
 	fmt.Println()
+
+	// newChain := chain.Snapshot("backup_chain")
+	// fmt.Println(newChain.Length())
 }
 
 func newPrivKeys() []kernel.PrivKey {
