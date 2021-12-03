@@ -82,12 +82,7 @@ func (chain *ChainT) pushBlock(block Block) error {
 		return err
 	}
 
-	txs := block.Range(ZeroInt(), block.Length()).([]Transaction)
-	if txs == nil {
-		failNotExist = false
-		return errors.New("txs is nil")
-	}
-
+	txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
 	for _, tx := range txs {
 		backTxByHash = append(backTxByHash, tx.Hash())
 		err = chain.setJournalTxByTxHash(tx.Hash(), tx)

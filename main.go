@@ -13,6 +13,8 @@ const (
 
 func main() {
 	var (
+		genegisValidator = crypto.NewPrivKey(kernel.KeySize)
+
 		validators = newPrivKeys()
 		valpubs    = newPubKeys(validators)
 		txsgen     = newTransactions(validators)
@@ -24,7 +26,7 @@ func main() {
 	for _, tx := range txsgen {
 		genesis.Append(tx)
 	}
-	genesis.Accept(validators[0])
+	genesis.Accept(genegisValidator)
 
 	// new chain
 	chain := kernel.NewChain("chain", genesis)
@@ -42,19 +44,28 @@ func main() {
 		for _, block := range blocks {
 			if validator.Equal(block.Validator()) {
 				chain.Append(block)
-				// for _, pub := range valpubs {
-				// 	fmt.Println(pub.Address(), chain.LazyInterval(pub))
-				// }
-				// fmt.Println()
+				for _, pub := range valpubs {
+					fmt.Println(pub.Address(), chain.LazyInterval(pub))
+				}
+				fmt.Println()
 				break
 			}
 		}
 	}
 
 	fmt.Println(chain.IsValid())
-
 	fmt.Println(chain.Length())
+	pub := genegisValidator.PubKey()
+	fmt.Println(pub.Address(), chain.LazyInterval(pub))
+	fmt.Println()
+
 	chain.RollBack(kernel.NewInt("90"))
+
+	fmt.Println(chain.IsValid())
+	fmt.Println(chain.Length())
+	pub = genegisValidator.PubKey()
+	fmt.Println(pub.Address(), chain.LazyInterval(pub))
+	fmt.Println()
 
 	// append new blocks by PoL
 	for i := 0; i < 10; i++ {
@@ -74,14 +85,11 @@ func main() {
 		}
 	}
 
-	// print blocks validators
-	list := chain.Range(kernel.NewInt("1"), chain.Length()).([]kernel.Block)
-	for _, block := range list {
-		fmt.Println(block.Validator().Address())
-	}
-
+	fmt.Println(chain.IsValid())
 	fmt.Println(chain.Length())
-
+	pub = genegisValidator.PubKey()
+	fmt.Println(pub.Address(), chain.LazyInterval(pub))
+	fmt.Println()
 }
 
 func newPrivKeys() []kernel.PrivKey {

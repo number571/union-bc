@@ -99,18 +99,18 @@ func (chain *ChainT) Close() {
 	}
 }
 
-// range is [x, y]
+// range is [x;y]
 func (chain *ChainT) Range(x, y BigInt) Object {
 	blocks := []Block{}
 
 	if x.Cmp(chain.Length()) > 0 {
-		return nil
+		return []Block{}
 	}
 
 	for x.Cmp(y) <= 0 {
 		block := chain.getStateBlockByID(x)
 		if block == nil {
-			return nil
+			return blocks
 		}
 		blocks = append(blocks, block)
 		x = x.Inc()
@@ -158,17 +158,16 @@ func (chain *ChainT) Find(hash Hash) Object {
 	return nil
 }
 
-// TODO: LevelDB -> Search blocks
 func (chain *ChainT) IsValid() bool {
-	// blocks := chain.Range(NewInt("1"), chain.Length()).([]Block)
-	// for _, block := range blocks {
-	// 	if !block.IsValid() {
-	// 		return false
-	// 	}
-	// 	if !bytes.Equal(chain.LastHash(), block.LastHash()) {
-	// 		return false
-	// 	}
-	// }
+	for i := NewInt("1"); i.Cmp(chain.Length()) < 0; i = i.Inc() {
+		blocks := chain.Range(i, i.Inc()).([]Block)
+		if !blocks[0].IsValid() {
+			return false
+		}
+		if !bytes.Equal(blocks[0].Hash(), blocks[1].LastHash()) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -219,24 +218,30 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 	return chain.Length().Sub(lazyHistory.last())
 }
 
-// TODO: LevelDB -> Rollback
-func (chain *ChainT) RollBack(id BigInt) error {
+func (chain *ChainT) RollBack(id BigInt) {
 	for i := chain.Length().Sub(id).Inc(); i.Cmp(chain.Length()) < 0; i = i.Inc() {
+		mappingPubs := make(map[string]bool)
+
 		block := chain.getStateBlockByID(i)
 		if block == nil {
-			return fmt.Errorf("block is nil")
+			break
 		}
 
 		txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
 		for _, tx := range txs {
 			pub := tx.Validator()
+			addr := pub.Address()
+
 			lazyHistory := chain.getAccountsLazyByAddress(pub)
 
-			for j := len(lazyHistory) - 1; j > 0; j-- {
-				lazy := LoadInt(lazyHistory[j])
-				if lazy.Cmp(id) < 0 {
-					chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
-					break
+			if _, ok := mappingPubs[addr]; !ok {
+				mappingPubs[addr] = true
+				for j := len(lazyHistory) - 1; j > 0; j-- {
+					lazy := LoadInt(lazyHistory[j])
+					if lazy.Cmp(id) < 0 {
+						chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
+						break
+					}
 				}
 			}
 
@@ -259,5 +264,4 @@ func (chain *ChainT) RollBack(id BigInt) error {
 	}
 
 	chain.setStateLength(chain.Length().Sub(id))
-	return nil
 }
