@@ -102,14 +102,15 @@ func (chain *ChainT) pushBlock(block Block) error {
 
 		if _, ok := mappingPubs[addr]; !ok {
 			mappingPubs[addr] = true
+
 			backLazyByAddress = append(backLazyByAddress,
 				backLazyByAddressT{pub, chain.getAccountsLazyByAddress(pub)})
-		}
 
-		err = chain.setAccountsLazyByAddress(pub, newLength)
-		if err != nil {
-			failNotExist = false
-			return err
+			err = chain.setAccountsLazyByAddress(pub, newLength)
+			if err != nil {
+				failNotExist = false
+				return err
+			}
 		}
 	}
 
@@ -242,16 +243,27 @@ func (chain *ChainT) getAccountsLazyByAddress(pub PubKey) LazyHistory {
 		return nil
 	}
 
-	if len(lazyHistory) > 100 {
-		lazyHistory = lazyHistory[len(lazyHistory)-100:]
+	if len(lazyHistory) > ForkSize {
+		lazyHistory = lazyHistory[len(lazyHistory)-ForkSize:]
 	}
 
 	return lazyHistory
 }
 
+func (chain *ChainT) splitAccountsLazyByAddress(pub PubKey, id BigInt, lazyHistory LazyHistory) {
+	for j := len(lazyHistory) - 1; j > 0; j-- {
+		lazy := LoadInt(lazyHistory[j])
+		if lazy.Cmp(id) < 0 {
+			chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
+			return
+		}
+	}
+	chain.resetAccountsLazyByAddress(pub, LazyHistory{})
+}
+
 func (lazyHistory LazyHistory) last() BigInt {
 	if len(lazyHistory) == 0 {
-		return nil
+		return ZeroInt()
 	}
 	return LoadInt(lazyHistory[len(lazyHistory)-1])
 }

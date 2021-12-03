@@ -44,10 +44,10 @@ func main() {
 		for _, block := range blocks {
 			if validator.Equal(block.Validator()) {
 				chain.Append(block)
-				for _, pub := range valpubs {
-					fmt.Println(pub.Address(), chain.LazyInterval(pub))
-				}
-				fmt.Println()
+				// for _, pub := range valpubs {
+				// 	fmt.Println(pub.Address(), chain.LazyInterval(pub))
+				// }
+				// fmt.Println()
 				break
 			}
 		}

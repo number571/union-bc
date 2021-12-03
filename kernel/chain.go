@@ -219,9 +219,12 @@ func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
 }
 
 func (chain *ChainT) RollBack(id BigInt) {
-	for i := chain.Length().Sub(id).Inc(); i.Cmp(chain.Length()) < 0; i = i.Inc() {
-		mappingPubs := make(map[string]bool)
+	var (
+		mappingPubs = make(map[string]bool)
+		startBlock  = chain.Length().Sub(id)
+	)
 
+	for i := startBlock.Inc(); i.Cmp(chain.Length()) <= 0; i = i.Inc() {
 		block := chain.getStateBlockByID(i)
 		if block == nil {
 			break
@@ -229,34 +232,23 @@ func (chain *ChainT) RollBack(id BigInt) {
 
 		txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
 		for _, tx := range txs {
-			pub := tx.Validator()
-			addr := pub.Address()
-
+			pub, addr := tx.Validator(), tx.Validator().Address()
 			lazyHistory := chain.getAccountsLazyByAddress(pub)
 
 			if _, ok := mappingPubs[addr]; !ok {
 				mappingPubs[addr] = true
-				for j := len(lazyHistory) - 1; j > 0; j-- {
-					lazy := LoadInt(lazyHistory[j])
-					if lazy.Cmp(id) < 0 {
-						chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
-						break
-					}
-				}
+				chain.splitAccountsLazyByAddress(pub, startBlock, lazyHistory)
 			}
 
 			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByTxHash, tx.Hash())), nil)
 		}
 
-		pub := block.Validator()
+		pub, addr := block.Validator(), block.Validator().Address()
 		lazyHistory := chain.getAccountsLazyByAddress(pub)
 
-		for j := len(lazyHistory) - 1; j > 0; j-- {
-			lazy := LoadInt(lazyHistory[j])
-			if lazy.Cmp(id) < 0 {
-				chain.resetAccountsLazyByAddress(pub, lazyHistory[:j])
-				break
-			}
+		if _, ok := mappingPubs[addr]; !ok {
+			mappingPubs[addr] = true
+			chain.splitAccountsLazyByAddress(pub, startBlock, lazyHistory)
 		}
 
 		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByBlockID, i)), nil)
