@@ -2,14 +2,11 @@ package kernel
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
-	"strings"
+	"sync"
 
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/number571/gopeer/encoding"
 )
 
 var (
@@ -17,303 +14,222 @@ var (
 )
 
 type ChainT struct {
-	path     string
-	state    *leveldb.DB
-	journal  *leveldb.DB
-	accounts *leveldb.DB
+	mtx     sync.Mutex
+	path    string
+	blocks  KeyValueDB
+	txs     KeyValueDB
+	mempool Mempool
 }
 
 func NewChain(path string, genesis Block) Chain {
 	var (
-		failNotExist = true
-		chain        *ChainT
+		blocksPath  = filepath.Join(path, BlocksPath)
+		txsPath     = filepath.Join(path, TXsPath)
+		mempoolPath = filepath.Join(path, MempoolPath)
 	)
-
-	var (
-		statePath    = filepath.Join(path, "state.db")
-		journalPath  = filepath.Join(path, "journal.db")
-		accountsPath = filepath.Join(path, "accounts.db")
-	)
-
-	defer func(chain Chain) {
-		if failNotExist {
-			return
-		}
-		chain.Close()
-		os.RemoveAll(statePath)
-		os.RemoveAll(journalPath)
-		os.RemoveAll(accountsPath)
-	}(chain)
-
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		os.RemoveAll(path)
-	}
 
 	if !genesis.IsValid() {
 		return nil
 	}
 
-	state, err := leveldb.OpenFile(statePath, nil)
-	if err != nil {
-		failNotExist = false
+	blocks := NewDB(blocksPath)
+	if blocks == nil {
 		return nil
 	}
 
-	journal, err := leveldb.OpenFile(journalPath, nil)
-	if err != nil {
-		failNotExist = false
+	txs := NewDB(txsPath)
+	if txs == nil {
 		return nil
 	}
 
-	accounts, err := leveldb.OpenFile(accountsPath, nil)
-	if err != nil {
-		failNotExist = false
+	mempool := NewDB(mempoolPath)
+	if mempool == nil {
 		return nil
 	}
 
-	chain = &ChainT{
-		path:     path,
-		state:    state,
-		journal:  journal,
-		accounts: accounts,
+	chain := &ChainT{
+		path:   path,
+		blocks: blocks,
+		txs:    txs,
+		mempool: &MempoolT{
+			ptr: mempool,
+		},
 	}
 
-	err = chain.setStateLength(NewInt("0"))
-	if err != nil {
-		failNotExist = false
-		return nil
-	}
-
-	err = chain.pushBlock(genesis)
-	if err != nil {
-		failNotExist = false
-		return nil
-	}
+	chain.setHeight(0)
+	chain.setBlock(genesis)
+	mempool.Set(GetKeyMempoolHeight(), encoding.Uint64ToBytes(0))
 
 	return chain
 }
 
 func LoadChain(path string) Chain {
 	var (
-		statePath    = filepath.Join(path, "state.db")
-		journalPath  = filepath.Join(path, "journal.db")
-		accountsPath = filepath.Join(path, "accounts.db")
+		blocksPath  = filepath.Join(path, BlocksPath)
+		txsPath     = filepath.Join(path, TXsPath)
+		mempoolPath = filepath.Join(path, MempoolPath)
 	)
 
-	state, err := leveldb.OpenFile(statePath, nil)
-	if err != nil {
+	blocks := NewDB(blocksPath)
+	if blocks == nil {
 		return nil
 	}
 
-	journal, err := leveldb.OpenFile(journalPath, nil)
-	if err != nil {
+	txs := NewDB(txsPath)
+	if txs == nil {
 		return nil
 	}
 
-	accounts, err := leveldb.OpenFile(accountsPath, nil)
-	if err != nil {
+	mempool := NewDB(mempoolPath)
+	if mempool == nil {
 		return nil
 	}
 
 	return &ChainT{
-		path:     path,
-		state:    state,
-		journal:  journal,
-		accounts: accounts,
+		path:   path,
+		blocks: blocks,
+		txs:    txs,
+		mempool: &MempoolT{
+			ptr: mempool,
+		},
 	}
 }
 
-func (chain *ChainT) Close() {
-	if chain.state != nil {
-		chain.state.Close()
-	}
-	if chain.journal != nil {
-		chain.journal.Close()
-	}
-	if chain.accounts != nil {
-		chain.accounts.Close()
-	}
+func (chain *ChainT) Mempool() Mempool {
+	return chain.mempool
 }
 
-// range is [x;y]
-func (chain *ChainT) Range(x, y BigInt) Object {
-	blocks := []Block{}
-
-	if x.Cmp(chain.Length()) > 0 {
-		return []Block{}
-	}
-
-	for x.Cmp(y) <= 0 {
-		block := chain.getStateBlockByID(x)
-		if block == nil {
-			return blocks
-		}
-		blocks = append(blocks, block)
-		x = x.Inc()
-	}
-
-	return blocks
-}
-
-func (chain *ChainT) Length() BigInt {
-	return chain.getStateLength()
-}
-
-func (chain *ChainT) LastHash() Hash {
-	return chain.getStateBlockByID(chain.Length()).Hash()
-}
-
-func (chain *ChainT) Append(obj Object) error {
-	block := obj.(Block)
-	if block == nil {
-		return errors.New("block is null")
-	}
+func (chain *ChainT) Accept(block Block) bool {
+	chain.mtx.Lock()
+	defer chain.mtx.Unlock()
 
 	if !block.IsValid() {
-		return errors.New("block is invalid")
+		return false
 	}
 
-	if !bytes.Equal(block.LastHash(), chain.LastHash()) {
-		return errors.New("relation is invalid")
+	lastBlock := chain.Block(chain.Height())
+	if !bytes.Equal(lastBlock.Hash(), block.PrevHash()) {
+		return false
 	}
 
-	return chain.pushBlock(block)
-}
-
-func (chain *ChainT) Find(hash Hash) Object {
-	id := chain.getStateBlockIdByHash(hash)
-	if id != nil {
-		return chain.getStateBlockByID(id)
-	}
-
-	id = chain.getJournalBlockIdByTxHash(hash)
-	if id != nil {
-		return chain.getStateBlockByID(id)
-	}
-
-	return nil
-}
-
-func (chain *ChainT) IsValid() bool {
-	for i := NewInt("1"); i.Cmp(chain.Length()) < 0; i = i.Inc() {
-		blocks := chain.Range(i, i.Inc()).([]Block)
-		if !blocks[0].IsValid() {
-			return false
-		}
-		if !bytes.Equal(blocks[0].Hash(), blocks[1].LastHash()) {
+	for _, tx := range block.Transactions() {
+		if chain.TX(tx.Hash()) != nil {
 			return false
 		}
 	}
+
+	chain.setHeight(chain.Height() + 1)
+	chain.setBlock(block)
+
 	return true
 }
 
-func (chain *ChainT) SelectLazy(validators []PubKey) PubKey {
+func (chain *ChainT) Merge(txs []Transaction) bool {
+	chain.mtx.Lock()
+	defer chain.mtx.Unlock()
+
 	var (
-		finds []PubKey
-		diff  = ZeroInt()
+		height    = chain.Height()
+		lastBlock = chain.Block(height)
+		resultTXs []Transaction
 	)
 
-	for _, pub := range validators {
-		lazyLevel := chain.LazyInterval(pub)
+	resultTXs = append(resultTXs, lastBlock.Transactions()...)
 
-		if lazyLevel.Cmp(diff) > 0 {
-			diff = lazyLevel
-			finds = []PubKey{pub}
+	for _, tx := range txs {
+		if !tx.IsValid() {
+			return false
+		}
+
+		if chain.TX(tx.Hash()) != nil {
 			continue
 		}
 
-		if lazyLevel.Cmp(diff) == 0 {
-			finds = append(finds, pub)
-			continue
-		}
+		resultTXs = append(resultTXs, tx)
 	}
 
-	lenpub := uint64(len(finds))
-
-	if lenpub == 0 {
-		panic("length of validators = nil")
+	if len(resultTXs) == TXsSize {
+		return false
 	}
 
-	if lenpub > 1 {
-		sort.SliceStable(finds, func(i, j int) bool {
-			return strings.Compare(finds[i].Address(), finds[j].Address()) < 0
-		})
+	// select x transactions from X by algorithm
+	sort.SliceStable(resultTXs, func(i, j int) bool {
+		return bytes.Compare(resultTXs[i].Hash(), resultTXs[j].Hash()) < 0
+	})
 
-		rnum := LoadInt(chain.LastHash()).Uint64()
-		finds[0] = finds[rnum%lenpub]
-	}
+	appendTXs := resultTXs[:TXsSize]
+	deleteTXs := resultTXs[TXsSize:]
 
-	return finds[0]
+	chain.updateBlock(height, NewBlock(lastBlock.PrevHash(), appendTXs), deleteTXs)
+	return true
 }
 
-func (chain *ChainT) LazyInterval(pub PubKey) BigInt {
-	lazyHistory := chain.getAccountsLazyByAddress(pub)
-	if lazyHistory == nil {
-		return ZeroInt()
-	}
-	return chain.Length().Sub(lazyHistory.last())
+func (chain *ChainT) Height() Height {
+	return chain.getHeight()
 }
 
-func (chain *ChainT) RollBack(num BigInt) error {
-	var (
-		mapping    = make(map[string]bool)
-		startBlock = chain.Length().Sub(num)
-	)
-
-	if startBlock.Cmp(ZeroInt()) < 0 {
-		return fmt.Errorf("chain length < num")
-	}
-
-	for i := startBlock.Inc(); i.Cmp(chain.Length()) <= 0; i = i.Inc() {
-		block := chain.getStateBlockByID(i)
-		if block == nil {
-			break
-		}
-
-		txs := block.Range(NewInt("1"), block.Length()).([]Transaction)
-		for _, tx := range txs {
-			chain.updateLazyHistory(tx, startBlock, mapping)
-
-			chain.journal.Delete([]byte(fmt.Sprintf(JournalTxByTxHash, tx.Hash())), nil)
-		}
-
-		chain.updateLazyHistory(block, startBlock, mapping)
-
-		chain.state.Delete([]byte(fmt.Sprintf(StateBlockByBlockID, i)), nil)
-		chain.state.Delete([]byte(fmt.Sprintf(StateBlockIdByBlockHash, block.Hash())), nil)
-	}
-
-	chain.setStateLength(startBlock)
-	return nil
+func (chain *ChainT) TX(hash Hash) Transaction {
+	return chain.getTX(hash)
 }
 
-func (chain *ChainT) Snapshot(path string) Chain {
-	err := copyDir(path, chain.path)
-	if err != nil {
-		return nil
-	}
-	return LoadChain(path)
+func (chain *ChainT) Block(height Height) Block {
+	return chain.getBlock(height)
 }
 
-func (chain *ChainT) updateLazyHistory(obj Signifier, startBlock BigInt, mapping map[string]bool) {
-	pub, addr := obj.Validator(), obj.Validator().Address()
+// Height
 
-	if _, ok := mapping[addr]; !ok {
-		newLazyHistory := chain.splitBeforeLazyHistory(pub, startBlock)
-		chain.resetAccountsLazyByAddress(pub, newLazyHistory)
-		mapping[addr] = true
+func (chain *ChainT) getHeight() Height {
+	data := chain.blocks.Get(GetKeyHeight())
+	if data == nil {
+		panic("value undefined")
+	}
+	return Height(encoding.BytesToUint64(data))
+}
+
+func (chain *ChainT) setHeight(height Height) {
+	chain.blocks.Set(GetKeyHeight(), encoding.Uint64ToBytes(uint64(height)))
+}
+
+// TX
+
+func (chain *ChainT) getTX(hash Hash) Transaction {
+	data := chain.blocks.Get(GetKeyTX(hash))
+	return LoadTransaction(data)
+}
+
+func (chain *ChainT) setTX(tx Transaction) {
+	chain.blocks.Set(GetKeyTX(tx.Hash()), tx.Bytes())
+}
+
+func (chain *ChainT) delTX(tx Transaction) {
+	chain.blocks.Del(GetKeyTX(tx.Hash()))
+}
+
+// Block
+
+func (chain *ChainT) getBlock(height Height) Block {
+	data := chain.blocks.Get(GetKeyBlock(height))
+	return LoadBlock(data)
+}
+
+func (chain *ChainT) setBlock(block Block) {
+	chain.blocks.Set(GetKeyBlock(chain.Height()), block.Bytes())
+
+	for _, tx := range block.Transactions() {
+		chain.setTX(tx)
 	}
 }
 
-func (chain *ChainT) splitBeforeLazyHistory(pub PubKey, id BigInt) LazyHistory {
-	lazyHistory := chain.getAccountsLazyByAddress(pub)
+func (chain *ChainT) updateBlock(height Height, block Block, delTXs []Transaction) {
+	chain.blocks.Set(GetKeyBlock(height), block.Bytes())
 
-	for j := len(lazyHistory) - 1; j > 0; j-- {
-		lazy := LoadInt(lazyHistory[j])
-		if lazy.Cmp(id) < 0 {
-			return lazyHistory[:j]
-		}
+	for _, tx := range block.Transactions() {
+		chain.setTX(tx)
+		go chain.Mempool().Clear(tx.Hash())
 	}
 
-	return LazyHistory{}
+	for _, tx := range delTXs {
+		chain.delTX(tx)
+		go chain.Mempool().Push(tx)
+	}
 }

@@ -3,7 +3,6 @@ package kernel
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -15,38 +14,57 @@ var (
 )
 
 type BlockT struct {
-	accepted  bool
-	txs       []Transaction
-	prevHash  []byte
-	currHash  []byte
-	sign      []byte
-	validator crypto.PubKey
+	txs      []Transaction
+	prevHash []byte
+	currHash []byte
 }
 
 type blockJSON struct {
-	TXs       [][]byte `json:"txs"`
-	PrevHash  []byte   `json:"prev_hash"`
-	CurrHash  []byte   `json:"curr_hash"`
-	Sign      []byte   `json:"sign"`
-	Validator []byte   `json:"validator"`
+	TXs      [][]byte `json:"txs"`
+	PrevHash []byte   `json:"prev_hash"`
+	CurrHash []byte   `json:"curr_hash"`
 }
 
-func NewBlock(prevHash []byte) Block {
-	return &BlockT{
+func NewBlock(prevHash []byte, txs []Transaction) Block {
+	if len(txs) != TXsSize {
+		return nil
+	}
+
+	for _, tx := range txs {
+		if !tx.IsValid() {
+			return nil
+		}
+	}
+
+	sort.SliceStable(txs, func(i, j int) bool {
+		return bytes.Compare(txs[i].Hash(), txs[j].Hash()) < 0
+	})
+
+	for i := 0; i < len(txs)-1; i++ {
+		if bytes.Equal(txs[i].Hash(), txs[i+1].Hash()) {
+			return nil
+		}
+	}
+
+	block := &BlockT{
+		txs:      txs,
 		prevHash: prevHash,
 	}
+
+	block.currHash = block.newHash()
+	return block
 }
 
 func LoadBlock(blockBytes []byte) Block {
 	blockConv := new(blockJSON)
-	json.Unmarshal(blockBytes, blockConv)
+	err := json.Unmarshal(blockBytes, blockConv)
+	if err != nil {
+		return nil
+	}
 
 	block := &BlockT{
-		accepted:  true,
-		prevHash:  blockConv.PrevHash,
-		currHash:  blockConv.CurrHash,
-		sign:      blockConv.Sign,
-		validator: crypto.LoadPubKey(blockConv.Validator),
+		prevHash: blockConv.PrevHash,
+		currHash: blockConv.CurrHash,
 	}
 
 	for _, tx := range blockConv.TXs {
@@ -60,77 +78,22 @@ func LoadBlock(blockBytes []byte) Block {
 	return block
 }
 
-// range is [x;y]
-func (block *BlockT) Range(x, y BigInt) Object {
-	return block.txs[x.Dec().Uint64():y.Uint64()]
+func (block *BlockT) Transactions() []Transaction {
+	return block.txs
 }
 
-func (block *BlockT) Length() BigInt {
-	return NewInt(fmt.Sprintf("%d", len(block.txs)))
-}
-
-func (block *BlockT) LastHash() Hash {
+func (block *BlockT) PrevHash() Hash {
 	return block.prevHash
 }
 
-func (block *BlockT) Append(obj Object) error {
-	tx := obj.(Transaction)
-	if tx == nil {
-		return errors.New("tx is nil")
-	}
-
-	if !tx.IsValid() {
-		return errors.New("tx is invalid")
-	}
-
-	block.txs = append(block.txs, tx)
-	return nil
-}
-
-func (block *BlockT) Find(hash Hash) Object {
-	for _, tx := range block.txs {
-		if bytes.Equal(hash, tx.Hash()) {
-			return tx
-		}
-	}
-	return nil
-}
-
-func (block *BlockT) Accept(priv PrivKey) error {
-	if priv == nil {
-		return errors.New("priv is nil")
-	}
-
-	if priv.Size() != KeySize {
-		return errors.New("key size not allowed")
-	}
-
-	sort.SliceStable(block.txs, func(i, j int) bool {
-		return bytes.Compare(block.txs[i].Hash(), block.txs[j].Hash()) < 0
-	})
-
-	block.accepted = true
-	block.validator = priv.PubKey()
-	block.currHash = block.newHash()
-	block.sign = priv.Sign(block.currHash)
-
-	return nil
-}
-
-func (block *BlockT) Wrap() []byte {
-	if !block.accepted {
-		return nil
-	}
-
+func (block *BlockT) Bytes() []byte {
 	blockConv := &blockJSON{
-		PrevHash:  block.LastHash(),
-		CurrHash:  block.Hash(),
-		Sign:      block.Sign(),
-		Validator: block.validator.Bytes(),
+		PrevHash: block.PrevHash(),
+		CurrHash: block.Hash(),
 	}
 
 	for _, tx := range block.txs {
-		blockConv.TXs = append(blockConv.TXs, tx.Wrap())
+		blockConv.TXs = append(blockConv.TXs, tx.Bytes())
 	}
 
 	blockBytes, err := json.Marshal(blockConv)
@@ -141,20 +104,16 @@ func (block *BlockT) Wrap() []byte {
 	return blockBytes
 }
 
+func (block *BlockT) String() string {
+	return fmt.Sprintf("Block{%X}", block.Bytes())
+}
+
 func (block *BlockT) Hash() Hash {
 	return block.currHash
 }
 
-func (block *BlockT) Sign() Sign {
-	return block.sign
-}
-
-func (block *BlockT) Validator() PubKey {
-	return block.validator
-}
-
 func (block *BlockT) IsValid() bool {
-	if block.Validator() == nil {
+	if len(block.txs) != TXsSize {
 		return false
 	}
 
@@ -162,18 +121,13 @@ func (block *BlockT) IsValid() bool {
 		return bytes.Compare(block.txs[i].Hash(), block.txs[j].Hash()) < 0
 	})
 
-	if !bytes.Equal(block.Hash(), block.newHash()) {
-		return false
-	}
-
-	return block.Validator().Verify(block.Hash(), block.Sign())
+	return bytes.Equal(block.Hash(), block.newHash())
 }
 
 func (block *BlockT) newHash() Hash {
 	hash := bytes.Join(
 		[][]byte{
-			block.Validator().Bytes(),
-			block.LastHash(),
+			block.PrevHash(),
 		},
 		[]byte{},
 	)

@@ -3,6 +3,7 @@ package kernel
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 
 	"github.com/number571/gopeer/crypto"
 )
@@ -12,20 +13,20 @@ var (
 )
 
 type TransactionT struct {
-	data      []byte
+	payLoad   []byte
 	hash      []byte
 	sign      []byte
 	validator crypto.PubKey
 }
 
 type txJSON struct {
-	Data      []byte `json:"data"`
+	PayLoad   []byte `json:"pay_load"`
 	Hash      []byte `json:"hash"`
 	Sign      []byte `json:"sign"`
 	Validator []byte `json:"validator"`
 }
 
-func NewTransaction(priv PrivKey, data []byte) Transaction {
+func NewTransaction(priv PrivKey, payLoad []byte) Transaction {
 	if priv == nil {
 		return nil
 	}
@@ -35,7 +36,7 @@ func NewTransaction(priv PrivKey, data []byte) Transaction {
 	}
 
 	tx := &TransactionT{
-		data:      data,
+		payLoad:   payLoad,
 		validator: priv.PubKey(),
 	}
 
@@ -47,10 +48,13 @@ func NewTransaction(priv PrivKey, data []byte) Transaction {
 
 func LoadTransaction(txbytes []byte) Transaction {
 	txConv := new(txJSON)
-	json.Unmarshal(txbytes, txConv)
+	err := json.Unmarshal(txbytes, txConv)
+	if err != nil {
+		return nil
+	}
 
 	tx := &TransactionT{
-		data:      txConv.Data,
+		payLoad:   txConv.PayLoad,
 		hash:      txConv.Hash,
 		sign:      txConv.Sign,
 		validator: crypto.LoadPubKey(txConv.Validator),
@@ -63,8 +67,8 @@ func LoadTransaction(txbytes []byte) Transaction {
 	return tx
 }
 
-func (tx *TransactionT) Data() []byte {
-	return tx.data
+func (tx *TransactionT) PayLoad() []byte {
+	return tx.payLoad
 }
 
 func (tx *TransactionT) Hash() Hash {
@@ -79,9 +83,9 @@ func (tx *TransactionT) Validator() PubKey {
 	return tx.validator
 }
 
-func (tx *TransactionT) Wrap() []byte {
+func (tx *TransactionT) Bytes() []byte {
 	txConv := &txJSON{
-		Data:      tx.Data(),
+		PayLoad:   tx.PayLoad(),
 		Hash:      tx.Hash(),
 		Sign:      tx.Sign(),
 		Validator: tx.Validator().Bytes(),
@@ -93,6 +97,10 @@ func (tx *TransactionT) Wrap() []byte {
 	}
 
 	return txbytes
+}
+
+func (tx *TransactionT) String() string {
+	return fmt.Sprintf("TX{%X}", tx.Bytes())
 }
 
 func (tx *TransactionT) IsValid() bool {
@@ -111,7 +119,7 @@ func (tx *TransactionT) newHash() Hash {
 	return crypto.NewSHA256(bytes.Join(
 		[][]byte{
 			tx.Validator().Bytes(),
-			tx.Data(),
+			tx.PayLoad(),
 		},
 		[]byte{},
 	)).Bytes()

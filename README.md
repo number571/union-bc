@@ -1,2 +1,2 @@
-# Laziest
-Blockchain kernel with consensus Proof of Laziness.
+# UnionBC
+Blockchain kernel with consensus UoP (union of peers).

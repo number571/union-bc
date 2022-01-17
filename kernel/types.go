@@ -4,75 +4,66 @@ import (
 	"github.com/number571/gopeer/crypto"
 )
 
+type Height uint64
 type Hash []byte
 type Sign []byte
 
 type PrivKey crypto.PrivKey
 type PubKey crypto.PubKey
 
-type Object interface{}
+type Wrapper interface {
+	Bytes() []byte
+	String() string
+}
 
-type Verifier interface {
+type Hasher interface {
+	Hash() Hash
 	IsValid() bool
 }
 
 type Signifier interface {
-	Hash() Hash
 	Sign() Sign
 	Validator() PubKey
 
-	Verifier
+	Hasher
 }
 
-type Editor interface {
-	LastHash() Hash
-	Find(Hash) Object
-	Append(Object) error
-	Length() BigInt
-	Range(BigInt, BigInt) Object
+type KeyValueDB interface {
+	Set([]byte, []byte)
+	Get([]byte) []byte
+	Del([]byte)
 }
 
-type Wrapper interface {
-	Wrap() []byte
-}
+type Mempool interface {
+	Height() Height
+	TX(Hash) Transaction
+	Clear(Hash)
 
-type BigInt interface {
-	Inc() BigInt
-	Dec() BigInt
-
-	Sub(BigInt) BigInt
-	Cmp(BigInt) int
-
-	Bytes() []byte
-	String() string
-	Uint64() uint64
-}
-
-type Transaction interface {
-	Data() []byte
-
-	Wrapper
-	Signifier
-}
-
-type Block interface {
-	Accept(PrivKey) error
-
-	Editor
-	Wrapper
-	Signifier
+	Push(Transaction)
+	Pop() Transaction
 }
 
 type Chain interface {
-	LazyInterval(PubKey) BigInt
-	SelectLazy([]PubKey) PubKey
+	Accept(Block) bool
+	Merge([]Transaction) bool
+	Height() Height
 
-	RollBack(BigInt) error
-	Snapshot(path string) Chain
-	Close()
+	TX(Hash) Transaction
+	Block(Height) Block
+	Mempool() Mempool
+}
 
-	// TryMerge(BigInt, []Block) error
+type Block interface {
+	PrevHash() Hash
+	Transactions() []Transaction
 
-	Editor
-	Verifier
+	Wrapper
+	Hasher
+}
+
+type Transaction interface {
+	PayLoad() []byte
+
+	Wrapper
+	Signifier
 }

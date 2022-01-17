@@ -1,8 +1,9 @@
 package network
 
 const (
-	SALT_SIZE = 1 << 4
-	BUFF_SIZE = 2 << 20
-	PACK_SIZE = 8 << 20
-	CONN_SIZE = 10
+	BuffSize  = (1 << 10) // 1KiB
+	PackSize  = (1 << 20) // 1MiB
+	ConnSize  = 256       // max num connections
+	RetrySize = 5         // num retry send
+	TimeLimit = 5         // seconds
 )
