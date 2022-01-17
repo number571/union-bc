@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/number571/gopeer/crypto"
-	"github.com/number571/unionbc/kernel"
+	"github.com/number571/go-peer/crypto"
+	"github.com/number571/union-bc/kernel"
 )
 
 func main() {

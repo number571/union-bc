@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/number571/gopeer/encoding"
+	"github.com/number571/go-peer/encoding"
 )
 
 var (

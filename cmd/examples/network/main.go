@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/number571/unionbc/network"
+	"github.com/number571/union-bc/network"
 )
 
 const (

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/number571/unionbc/network"
+import "github.com/number571/union-bc/network"
 
 const (
 	MsgGetHeight network.MsgType = iota + 1

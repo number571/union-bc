@@ -3,7 +3,7 @@ package kernel
 import (
 	"sync"
 
-	"github.com/number571/gopeer/encoding"
+	"github.com/number571/go-peer/encoding"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 

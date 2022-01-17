@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/number571/gopeer/crypto"
-	"github.com/number571/gopeer/encoding"
-	"github.com/number571/unionbc/kernel"
-	"github.com/number571/unionbc/network"
+	"github.com/number571/go-peer/crypto"
+	"github.com/number571/go-peer/encoding"
+	"github.com/number571/union-bc/kernel"
+	"github.com/number571/union-bc/network"
 )
 
 var (

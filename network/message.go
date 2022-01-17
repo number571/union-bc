@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/number571/gopeer/crypto"
+	"github.com/number571/go-peer/crypto"
 )
 
 var (
