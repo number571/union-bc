@@ -41,3 +41,7 @@ func (db *KeyValueDBT) Del(key []byte) {
 		panic(err)
 	}
 }
+
+func (db *KeyValueDBT) Close() {
+	db.ptr.Close()
+}

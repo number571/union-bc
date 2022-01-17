@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -95,6 +96,14 @@ func LoadChain(path string) Chain {
 	}
 }
 
+func (chain *ChainT) Close() {
+	chain.blocks.Close()
+	chain.txs.Close()
+
+	mempool := chain.mempool.(*MempoolT)
+	mempool.ptr.Close()
+}
+
 func (chain *ChainT) Mempool() Mempool {
 	return chain.mempool
 }
@@ -103,19 +112,32 @@ func (chain *ChainT) Accept(block Block) bool {
 	chain.mtx.Lock()
 	defer chain.mtx.Unlock()
 
+	if block == nil {
+		fmt.Println("ACCEPT 111")
+		return false
+	}
+
 	if !block.IsValid() {
+		fmt.Println("ACCEPT 222")
 		return false
 	}
 
 	lastBlock := chain.Block(chain.Height())
 	if !bytes.Equal(lastBlock.Hash(), block.PrevHash()) {
+		fmt.Println("ACCEPT 333")
 		return false
 	}
 
 	for _, tx := range block.Transactions() {
 		if chain.TX(tx.Hash()) != nil {
+			fmt.Println("ACCEPT 444")
 			return false
 		}
+	}
+
+	mempool := chain.Mempool()
+	for _, tx := range block.Transactions() {
+		mempool.Clear(tx.Hash())
 	}
 
 	chain.setHeight(chain.Height() + 1)
@@ -124,15 +146,18 @@ func (chain *ChainT) Accept(block Block) bool {
 	return true
 }
 
-func (chain *ChainT) Merge(txs []Transaction) bool {
+func (chain *ChainT) Merge(height Height, txs []Transaction) bool {
 	chain.mtx.Lock()
 	defer chain.mtx.Unlock()
 
 	var (
-		height    = chain.Height()
 		lastBlock = chain.Block(height)
 		resultTXs []Transaction
 	)
+
+	if chain.Height() != height {
+		return false
+	}
 
 	resultTXs = append(resultTXs, lastBlock.Transactions()...)
 

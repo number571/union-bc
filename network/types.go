@@ -1,8 +1,12 @@
 package network
 
-import "net"
+import (
+	"net"
+	"sync"
+)
 
 type Conn net.Conn
+type Mutex *sync.Mutex
 type MsgType uint32
 
 type HandleFunc func(Node, Conn, []byte)

@@ -32,6 +32,7 @@ type KeyValueDB interface {
 	Set([]byte, []byte)
 	Get([]byte) []byte
 	Del([]byte)
+	Close()
 }
 
 type Mempool interface {
@@ -40,17 +41,19 @@ type Mempool interface {
 	Clear(Hash)
 
 	Push(Transaction)
-	Pop() Transaction
+	Pop() []Transaction
 }
 
 type Chain interface {
 	Accept(Block) bool
-	Merge([]Transaction) bool
+	Merge(Height, []Transaction) bool
 	Height() Height
 
 	TX(Hash) Transaction
 	Block(Height) Block
 	Mempool() Mempool
+
+	Close()
 }
 
 type Block interface {

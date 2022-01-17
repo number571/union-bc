@@ -11,7 +11,9 @@ var (
 
 // Basic structure for network use.
 type NodeT struct {
-	mutex        sync.Mutex
+	mainMtx  sync.Mutex
+	routeMtx sync.Mutex
+
 	moniker      string
 	connections  map[Conn]bool
 	handleRoutes map[MsgType]HandleFunc
@@ -98,6 +100,9 @@ func (node *NodeT) handleConn(conn Conn) {
 }
 
 func (node *NodeT) handleFunc(conn Conn, msg Message) bool {
+	node.routeMtx.Lock()
+	defer node.routeMtx.Unlock()
+
 	f, ok := node.getFunction(msg.Head())
 	if !ok {
 		return false
@@ -109,8 +114,8 @@ func (node *NodeT) handleFunc(conn Conn, msg Message) bool {
 
 // Get list of connection addresses.
 func (node *NodeT) Connections() []Conn {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	var list []Conn
 	for conn := range node.connections {
@@ -143,37 +148,37 @@ func (node *NodeT) Disconnect(conn Conn) {
 }
 
 func (node *NodeT) setFunction(tmsg MsgType, handle HandleFunc) {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	node.handleRoutes[tmsg] = handle
 }
 
 func (node *NodeT) getFunction(tmsg MsgType) (HandleFunc, bool) {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	f, ok := node.handleRoutes[tmsg]
 	return f, ok
 }
 
 func (node *NodeT) hasMaxConnSize() bool {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	return len(node.connections) > ConnSize
 }
 
 func (node *NodeT) setConnection(conn Conn) {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	node.connections[conn] = true
 }
 
 func (node *NodeT) delConnection(conn Conn) {
-	node.mutex.Lock()
-	defer node.mutex.Unlock()
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
 
 	delete(node.connections, conn)
 	conn.Close()

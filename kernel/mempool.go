@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/number571/go-peer/encoding"
@@ -57,29 +58,37 @@ func (mempool *MempoolT) Push(tx Transaction) {
 	mempool.ptr.Set(GetKeyMempoolTX(hash), tx.Bytes())
 }
 
-func (mempool *MempoolT) Pop() Transaction {
+func (mempool *MempoolT) Pop() []Transaction {
 	mempool.mtx.Lock()
 	defer mempool.mtx.Unlock()
 
 	var (
-		db      = (mempool.ptr).(*KeyValueDBT)
-		iter    = db.ptr.NewIterator(util.BytesPrefix([]byte(KeyMempoolPrefixTX)), nil)
-		txBytes []byte
+		db    = (mempool.ptr).(*KeyValueDBT)
+		iter  = db.ptr.NewIterator(util.BytesPrefix([]byte(KeyMempoolPrefixTX)), nil)
+		txs   []Transaction
+		count uint
 	)
 
-	for iter.Next() {
-		txBytes = iter.Value()
-		break
+	for count = 0; iter.Next() && count < TXsSize; count++ {
+		txBytes := iter.Value()
+		tx := LoadTransaction(txBytes)
+		if tx == nil {
+			return nil
+		}
+		txs = append(txs, tx)
 	}
 	iter.Release()
 
-	tx := LoadTransaction(txBytes)
-	if tx == nil {
+	if count != TXsSize {
+		fmt.Println(count)
 		return nil
 	}
 
-	mempool.deleteTX(tx.Hash())
-	return tx
+	for _, tx := range txs {
+		mempool.deleteTX(tx.Hash())
+	}
+
+	return txs
 }
 
 func (mempool *MempoolT) deleteTX(hash Hash) {

@@ -31,7 +31,12 @@ func NewBlock(prevHash []byte, txs []Transaction) Block {
 	}
 
 	for _, tx := range txs {
+		if tx == nil {
+			fmt.Println("111111111111")
+			return nil
+		}
 		if !tx.IsValid() {
+			fmt.Println("222222222222")
 			return nil
 		}
 	}
@@ -42,6 +47,7 @@ func NewBlock(prevHash []byte, txs []Transaction) Block {
 
 	for i := 0; i < len(txs)-1; i++ {
 		if bytes.Equal(txs[i].Hash(), txs[i+1].Hash()) {
+			fmt.Println("333333333")
 			return nil
 		}
 	}
