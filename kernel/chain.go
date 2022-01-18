@@ -113,24 +113,24 @@ func (chain *ChainT) Accept(block Block) bool {
 	defer chain.mtx.Unlock()
 
 	if block == nil {
-		fmt.Println("ACCEPT 111")
+		fmt.Println("111")
 		return false
 	}
 
 	if !block.IsValid() {
-		fmt.Println("ACCEPT 222")
+		fmt.Println("222")
 		return false
 	}
 
 	lastBlock := chain.Block(chain.Height())
 	if !bytes.Equal(lastBlock.Hash(), block.PrevHash()) {
-		fmt.Println("ACCEPT 333")
+		fmt.Println("333")
 		return false
 	}
 
 	for _, tx := range block.Transactions() {
 		if chain.TX(tx.Hash()) != nil {
-			fmt.Println("ACCEPT 444")
+			fmt.Println("444")
 			return false
 		}
 	}

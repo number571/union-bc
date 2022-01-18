@@ -1,7 +1,6 @@
 package kernel
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/number571/go-peer/encoding"
@@ -80,7 +79,6 @@ func (mempool *MempoolT) Pop() []Transaction {
 	iter.Release()
 
 	if count != TXsSize {
-		fmt.Println(count)
 		return nil
 	}
 

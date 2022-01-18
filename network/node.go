@@ -15,6 +15,7 @@ type NodeT struct {
 	routeMtx sync.Mutex
 
 	moniker      string
+	mapping      map[string]bool
 	connections  map[Conn]bool
 	handleRoutes map[MsgType]HandleFunc
 }
@@ -23,6 +24,7 @@ type NodeT struct {
 func NewNode(moniker string) Node {
 	return &NodeT{
 		moniker:      moniker,
+		mapping:      make(map[string]bool),
 		connections:  make(map[Conn]bool),
 		handleRoutes: make(map[MsgType]HandleFunc),
 	}
@@ -88,6 +90,12 @@ func (node *NodeT) handleConn(conn Conn) {
 			counter++
 			continue
 		}
+
+		hash := msg.Hash()
+		if node.inMapping(hash) {
+			continue
+		}
+		node.setMapping(hash)
 
 		ok := node.handleFunc(conn, msg)
 		if !ok {
@@ -182,4 +190,26 @@ func (node *NodeT) delConnection(conn Conn) {
 
 	delete(node.connections, conn)
 	conn.Close()
+}
+
+func (node *NodeT) inMapping(hash string) bool {
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
+
+	_, ok := node.mapping[hash]
+	return ok
+}
+
+func (node *NodeT) setMapping(hash string) {
+	node.mainMtx.Lock()
+	defer node.mainMtx.Unlock()
+
+	if uint(len(node.mapping)) > MappSize {
+		for k := range node.mapping {
+			delete(node.mapping, k)
+			break
+		}
+	}
+
+	node.mapping[hash] = true
 }
