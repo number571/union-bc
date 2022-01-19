@@ -30,6 +30,14 @@ func NewNode(moniker string) Node {
 	}
 }
 
+func (node *NodeT) Lock() {
+	node.routeMtx.Lock()
+}
+
+func (node *NodeT) Unlock() {
+	node.routeMtx.Unlock()
+}
+
 func (node *NodeT) Moniker() string {
 	return node.moniker
 }
@@ -61,7 +69,19 @@ func (node *NodeT) Listen(address string) error {
 			continue
 		}
 
-		node.setConnection(conn)
+		whoIs := make([]byte, 1)
+		conn.Read(whoIs)
+
+		switch whoIs[0] {
+		case IsNode:
+			node.setConnection(conn)
+		case IsClient:
+			// do nothing
+		default:
+			conn.Close()
+			continue
+		}
+
 		go node.handleConn(conn)
 	}
 
@@ -144,6 +164,8 @@ func (node *NodeT) Connect(address string) Conn {
 	if err != nil {
 		return nil
 	}
+
+	conn.Write([]byte{IsNode})
 
 	node.setConnection(conn)
 	go node.handleConn(conn)

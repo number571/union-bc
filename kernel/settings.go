@@ -3,7 +3,7 @@ package kernel
 const (
 	KeySize     = 1024 // num bits
 	MempoolSize = 512  // max num txs in mempool
-	TXsSize     = 32   // num txs in block
+	TXsSize     = 16   // num txs in block
 
 	BlocksPath  = "blocks.db"
 	TXsPath     = "txs.db"

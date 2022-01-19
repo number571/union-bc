@@ -12,15 +12,17 @@ var (
 )
 
 type MessageT struct {
-	HeadT MsgType `json:"head"`
-	BodyT []byte  `json:"body"`
+	HeadT  MsgType `json:"head"`
+	BodyT  []byte  `json:"body"`
+	NonceT []byte  `json:"nonce"`
 }
 
 // Create message with title and data.
 func NewMessage(head MsgType, body []byte) Message {
 	return &MessageT{
-		HeadT: head,
-		BodyT: body,
+		HeadT:  head,
+		BodyT:  body,
+		NonceT: crypto.RandBytes(16),
 	}
 }
 
@@ -30,6 +32,10 @@ func (msg *MessageT) Head() MsgType {
 
 func (msg *MessageT) Body() []byte {
 	return msg.BodyT
+}
+
+func (msg *MessageT) Nonce() []byte {
+	return msg.NonceT
 }
 
 func (msg *MessageT) Hash() string {

@@ -1,14 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net"
 	"os"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -18,14 +14,19 @@ import (
 	"github.com/number571/union-bc/network"
 )
 
-const (
-	IntervalTime = 5 // seconds
-)
-
 var (
 	Chain       kernel.Chain
 	CurrentTime uint64
 	ChainPath   = "chain" + os.Args[1]
+)
+
+var (
+	Address  = os.Args[1]
+	ListAddr = []string{
+		":7070",
+		":8080",
+		":9090",
+	}
 )
 
 type updateBlock struct {
@@ -51,62 +52,58 @@ func main() {
 		Handle(MsgSetTX, handleSetTX)
 
 	initNode(node)
-	initClient(node)
+	initClient()
+}
+
+func initClient() {
+	time.Sleep(1 * time.Second)
+
+	client := network.NewClient(Address)
+	if client == nil {
+		panic("client is nil")
+	}
+
+	for {
+		priv := crypto.NewPrivKey(kernel.KeySize)
+		for i := 0; i < 20; i++ {
+			tx := kernel.NewTransaction(priv, []byte(crypto.RandString(20)))
+			_ = client.Request(network.NewMessage(MsgSetTX, tx.Bytes()))
+		}
+		time.Sleep(3 * time.Second)
+	}
 }
 
 func initNode(node network.Node) {
-	var (
-		address  = os.Args[1]
-		listAddr = []string{
-			":7070",
-			":8080",
-			":9090",
-		}
-	)
+	fmt.Println("Node is listening...")
+	var client network.Client
 
-	// Get current height from nodes
-	for _, addr := range listAddr {
-		if addr == address {
+	for _, addr := range ListAddr {
+		if addr == Address {
 			continue
 		}
-
-		conn := getConn(addr)
-		if conn == nil {
+		client = network.NewClient(addr)
+		if client == nil {
 			continue
 		}
-
-		syncBlocks(conn)
 		break
 	}
 
-	// Get current time from nodes
-	for _, addr := range listAddr {
-		if addr == address {
-			continue
-		}
-
-		conn := getConn(addr)
-		if conn == nil {
-			continue
-		}
-
-		atomic.StoreUint64(&CurrentTime, getTime(conn))
-		break
+	if client != nil {
+		syncBlocks(client)
+		atomic.StoreUint64(&CurrentTime, getTime(client))
+		client.Close()
 	}
 
 	// Connects
-	for _, addr := range listAddr {
-		if addr == address {
+	for _, addr := range ListAddr {
+		if addr == Address {
 			continue
 		}
 		node.Connect(addr)
 	}
 
 	// Listen port
-	fmt.Println("Node is listening...")
-	if address != "" {
-		go node.Listen(address)
-	}
+	go node.Listen(Address)
 
 	// Run timer
 	go func(node network.Node) {
@@ -115,27 +112,47 @@ func initNode(node network.Node) {
 			atomic.AddUint64(&CurrentTime, 1)
 
 			if CurrentTime%IntervalTime == 0 {
+				node.Lock()
 				tryUpdateBlock(node, Chain.Mempool(), Chain.Height())
+				node.Unlock()
 			}
 		}
 	}(node)
 }
 
-func getConn(addr string) network.Conn {
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		return nil
+func getHeight(client network.Client) kernel.Height {
+	msg := network.NewMessage(
+		MsgGetHeight,
+		nil,
+	)
+
+	msg = client.Request(msg)
+	if msg == nil {
+		return 0
 	}
-	return conn
+
+	return kernel.Height(encoding.BytesToUint64(msg.Body()))
 }
 
-func getTime(conn network.Conn) uint64 {
+func getBlock(client network.Client, height kernel.Height) kernel.Block {
+	msg := network.NewMessage(
+		MsgGetBlock,
+		encoding.Uint64ToBytes(uint64(height)),
+	)
+	msg = client.Request(msg)
+	if msg == nil {
+		return nil
+	}
+	return kernel.LoadBlock(msg.Body())
+}
+
+func getTime(client network.Client) uint64 {
 	msg := network.NewMessage(
 		MsgGetTime,
 		nil,
 	)
 
-	msg = network.SendRequest(conn, msg)
+	msg = client.Request(msg)
 	if msg == nil {
 		return 0
 	}
@@ -143,43 +160,24 @@ func getTime(conn network.Conn) uint64 {
 	return encoding.BytesToUint64(msg.Body())
 }
 
-func syncBlocks(conn network.Conn) {
-	msg := network.NewMessage(
-		MsgGetHeight,
-		nil,
-	)
-
-	msg = network.SendRequest(conn, msg)
-	if msg == nil {
-		return
-	}
-
-	initHeight := Chain.Height()
-	height := encoding.BytesToUint64(msg.Body())
-
+func syncBlocks(client network.Client) {
 	mempool := Chain.Mempool()
 
+	initHeight := Chain.Height()
+	limitHeight := getHeight(client)
+
 	// syncable blocks
-	for i := initHeight; i <= kernel.Height(height); i++ {
-		msg := network.NewMessage(
-			MsgGetBlock,
-			encoding.Uint64ToBytes(uint64(i)),
-		)
-
-		msg = network.SendRequest(conn, msg)
-		if msg == nil {
-			break
-		}
-
-		newBlock := kernel.LoadBlock(msg.Body())
-		if newBlock == nil {
+	for i := initHeight; i <= limitHeight; i++ {
+		block := getBlock(client, i)
+		if block == nil {
 			break
 		}
 
 		if i == 0 {
 			Chain.Close()
-			Chain = kernel.NewChain(ChainPath, newBlock)
+			Chain = kernel.NewChain(ChainPath, block)
 			mempool = Chain.Mempool()
+			Log().Info("SYNCABLE", i, block.Hash(), mempool.Height(), kernel.TXsSize)
 		}
 
 		if i == initHeight {
@@ -187,23 +185,12 @@ func syncBlocks(conn network.Conn) {
 		}
 
 		if i != 0 {
-			ok := Chain.Accept(newBlock)
+			ok := Chain.Accept(block)
 			if !ok {
-				log.Printf("[E] %-12sheight=%020d txs=%d hash=%064d mempool=%05d\n", "S-CONSENSUS", i, kernel.TXsSize, 0, mempool.Height())
+				Log().Error("SYNCABLE", i, []byte{0}, mempool.Height(), kernel.TXsSize)
 				break
 			}
-			log.Printf("[I] %-12sheight=%020d txs=%d hash=%X mempool=%05d\n", "SYNCABLE", i, kernel.TXsSize, newBlock.Hash(), mempool.Height())
-		}
-	}
-}
-
-func initClient(node network.Node) {
-	for {
-		time.Sleep(5 * time.Second)
-		for i := 0; i < 15; i++ {
-			msg := []byte(crypto.RandString(20))
-			tx := kernel.NewTransaction(crypto.NewPrivKey(kernel.KeySize), msg)
-			node.Broadcast(network.NewMessage(MsgSetTX, tx.Bytes()))
+			Log().Info("SYNCABLE", i, block.Hash(), mempool.Height(), kernel.TXsSize)
 		}
 	}
 }
@@ -276,7 +263,7 @@ func handleSetBlock(node network.Node, conn network.Conn, data []byte) {
 
 	if upBlock.Height > height {
 		if upBlock.Height > height+1 {
-			log.Printf("[E] %-12sheight=%020d txs=%d hash=%064d mempool=%05d\n", "M-CONSENSUS", upBlock.Height, kernel.TXsSize, 0, mempool.Height())
+			Log().Error("MERGE", height, []byte{0}, mempool.Height(), kernel.TXsSize)
 			return
 		}
 		for _, tx := range newBlock.Transactions() {
@@ -285,6 +272,7 @@ func handleSetBlock(node network.Node, conn network.Conn, data []byte) {
 			}
 			mempool.Push(tx)
 		}
+		tryUpdateBlock(node, mempool, height)
 		return
 	}
 
@@ -292,24 +280,25 @@ func handleSetBlock(node network.Node, conn network.Conn, data []byte) {
 		return
 	}
 
-	for {
-		ctime := atomic.LoadUint64(&CurrentTime) % IntervalTime
-		if ctime >= 1 && ctime <= IntervalTime-1 {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
+	// for {
+	// 	ctime := atomic.LoadUint64(&CurrentTime) % IntervalTime
+	// 	if ctime >= 1 && ctime <= IntervalTime-1 {
+	// 		break
+	// 	}
+	// 	time.Sleep(200 * time.Millisecond)
+	// }
 
 	ok := Chain.Merge(height, newBlock.Transactions())
 	if !ok {
 		return
 	}
 
-	log.Printf("[I] %-12sheight=%020d txs=%d hash=%X mempool=%05d\n", "MERGE", height, kernel.TXsSize, newBlock.Hash(), mempool.Height())
+	mergedBlock := Chain.Block(height)
+	Log().Info("MERGE", height, mergedBlock.Hash(), mempool.Height(), kernel.TXsSize)
 
 	upBlock = updateBlock{
 		Height: height,
-		Block:  newBlock.Bytes(),
+		Block:  mergedBlock.Bytes(),
 	}
 
 	upBlockBytes, err := json.Marshal(upBlock)
@@ -344,7 +333,16 @@ func handleSetTX(node network.Node, conn network.Conn, data []byte) {
 		mempool = Chain.Mempool()
 		tx      = kernel.LoadTransaction(data)
 		hash    = tx.Hash()
+		retCode = uint64(0)
 	)
+
+	defer func(conn network.Conn) {
+		msg := network.NewMessage(
+			MsgSetTX|MaskBit,
+			encoding.Uint64ToBytes(retCode),
+		)
+		conn.Write(msg.Bytes())
+	}(conn)
 
 	if tx == nil {
 		return
@@ -352,11 +350,13 @@ func handleSetTX(node network.Node, conn network.Conn, data []byte) {
 
 	txInChain := Chain.TX(hash)
 	if txInChain != nil {
+		retCode = 1
 		return
 	}
 
 	txInMempool := mempool.TX(hash)
 	if txInMempool != nil {
+		retCode = 2
 		return
 	}
 
@@ -381,11 +381,11 @@ func tryUpdateBlock(node network.Node, mempool kernel.Mempool, height kernel.Hei
 
 	ok := Chain.Accept(newBlock)
 	if !ok {
-		log.Printf("[E] %-12sheight=%020d txs=%d hash=%064d mempool=%05d\n", "A-CONSENSUS", newHeight, kernel.TXsSize, 0, mempool.Height())
+		Log().Error("ACCEPT", newHeight, []byte{0}, mempool.Height(), kernel.TXsSize)
 		return
 	}
 
-	log.Printf("[I] %-12sheight=%020d txs=%d hash=%X mempool=%05d\n", "ACCEPT", newHeight, kernel.TXsSize, newBlock.Hash(), mempool.Height())
+	Log().Info("ACCEPT", newHeight, newBlock.Hash(), mempool.Height(), kernel.TXsSize)
 
 	upBlock := updateBlock{
 		Height: newHeight,
@@ -398,12 +398,6 @@ func tryUpdateBlock(node network.Node, mempool kernel.Mempool, height kernel.Hei
 	}
 
 	node.Broadcast(network.NewMessage(MsgSetBlock, upBlockBytes))
-}
-
-func inputString(begin string) string {
-	fmt.Print(begin)
-	s, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.Replace(s, "\n", "", -1)
 }
 
 func pathIsExist(path string) bool {

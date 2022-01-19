@@ -5,11 +5,6 @@ import (
 	"encoding/json"
 )
 
-func SendRequest(conn Conn, msg Message) Message {
-	conn.Write(msg.Bytes())
-	return ReadMessage(conn)
-}
-
 func ReadMessage(conn Conn) Message {
 	const (
 		SizeUint64 = 8 // bytes
