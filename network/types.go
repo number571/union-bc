@@ -6,10 +6,9 @@ import (
 )
 
 type Conn net.Conn
-type Mutex *sync.Mutex
 type MsgType uint32
 
-type HandleFunc func(Node, Conn, []byte)
+type HandleFunc func(Node, Conn, Message)
 
 type Message interface {
 	Head() MsgType
@@ -35,8 +34,7 @@ type Client interface {
 
 type Node interface {
 	Moniker() string
-	Lock()
-	Unlock()
+	Mutex() *sync.Mutex
 
 	Broadcast(Message)
 	Listen(string) error

@@ -19,7 +19,7 @@ type MempoolT struct {
 func (mempool *MempoolT) Height() Height {
 	data := mempool.ptr.Get(GetKeyMempoolHeight())
 	if data == nil {
-		panic("value undefined")
+		panic("mempool: height undefined")
 	}
 	return Height(encoding.BytesToUint64(data))
 }
@@ -29,11 +29,34 @@ func (mempool *MempoolT) TX(hash Hash) Transaction {
 	return LoadTransaction(data)
 }
 
-func (mempool *MempoolT) Clear(hash Hash) {
+func (mempool *MempoolT) Delete(hash Hash) {
 	mempool.mtx.Lock()
 	defer mempool.mtx.Unlock()
 
 	mempool.deleteTX(hash)
+}
+
+func (mempool *MempoolT) Clear() {
+	mempool.mtx.Lock()
+	defer mempool.mtx.Unlock()
+
+	var (
+		db   = (mempool.ptr).(*KeyValueDBT)
+		iter = db.ptr.NewIterator(util.BytesPrefix([]byte(KeyMempoolPrefixTX)), nil)
+	)
+
+	for iter.Next() {
+		txBytes := iter.Value()
+
+		tx := LoadTransaction(txBytes)
+		if tx == nil {
+			panic("mempool: tx is nil")
+		}
+
+		mempool.deleteTX(tx.Hash())
+	}
+
+	iter.Release()
 }
 
 func (mempool *MempoolT) Push(tx Transaction) {
@@ -60,6 +83,10 @@ func (mempool *MempoolT) Push(tx Transaction) {
 func (mempool *MempoolT) Pop() []Transaction {
 	mempool.mtx.Lock()
 	defer mempool.mtx.Unlock()
+
+	if mempool.Height() < TXsSize {
+		return nil
+	}
 
 	var (
 		db    = (mempool.ptr).(*KeyValueDBT)

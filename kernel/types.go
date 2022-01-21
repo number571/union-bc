@@ -38,10 +38,12 @@ type KeyValueDB interface {
 type Mempool interface {
 	Height() Height
 	TX(Hash) Transaction
-	Clear(Hash)
 
 	Push(Transaction)
 	Pop() []Transaction
+
+	Delete(Hash)
+	Clear()
 }
 
 type Chain interface {

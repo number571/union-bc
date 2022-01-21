@@ -30,12 +30,8 @@ func NewNode(moniker string) Node {
 	}
 }
 
-func (node *NodeT) Lock() {
-	node.routeMtx.Lock()
-}
-
-func (node *NodeT) Unlock() {
-	node.routeMtx.Unlock()
+func (node *NodeT) Mutex() *sync.Mutex {
+	return &node.routeMtx
 }
 
 func (node *NodeT) Moniker() string {
@@ -136,7 +132,7 @@ func (node *NodeT) handleFunc(conn Conn, msg Message) bool {
 		return false
 	}
 
-	f(node, conn, msg.Body())
+	f(node, conn, msg)
 	return true
 }
 

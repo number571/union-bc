@@ -7,7 +7,7 @@ const (
 
 	BlocksPath  = "blocks.db"
 	TXsPath     = "txs.db"
-	MempoolPath = "mampool.db"
+	MempoolPath = "mempool.db"
 
 	KeyHeight = "chain.blocks.height"
 	KeyBlock  = "chain.blocks.block[%d]"

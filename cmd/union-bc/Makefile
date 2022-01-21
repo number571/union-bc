@@ -1,4 +1,4 @@
-FILES = main.go settings.go 
+FILES = main.go settings.go logger.go
 
 .PHONY: default build clean
 default: clean build 

@@ -132,7 +132,7 @@ func (chain *ChainT) Accept(block Block) bool {
 
 	mempool := chain.Mempool()
 	for _, tx := range block.Transactions() {
-		mempool.Clear(tx.Hash())
+		mempool.Delete(tx.Hash())
 	}
 
 	chain.setHeight(chain.Height() + 1)
@@ -201,7 +201,7 @@ func (chain *ChainT) Block(height Height) Block {
 func (chain *ChainT) getHeight() Height {
 	data := chain.blocks.Get(GetKeyHeight())
 	if data == nil {
-		panic("value undefined")
+		panic("chain: height undefined")
 	}
 	return Height(encoding.BytesToUint64(data))
 }
@@ -213,16 +213,16 @@ func (chain *ChainT) setHeight(height Height) {
 // TX
 
 func (chain *ChainT) getTX(hash Hash) Transaction {
-	data := chain.blocks.Get(GetKeyTX(hash))
+	data := chain.txs.Get(GetKeyTX(hash))
 	return LoadTransaction(data)
 }
 
 func (chain *ChainT) setTX(tx Transaction) {
-	chain.blocks.Set(GetKeyTX(tx.Hash()), tx.Bytes())
+	chain.txs.Set(GetKeyTX(tx.Hash()), tx.Bytes())
 }
 
 func (chain *ChainT) delTX(tx Transaction) {
-	chain.blocks.Del(GetKeyTX(tx.Hash()))
+	chain.txs.Del(GetKeyTX(tx.Hash()))
 }
 
 // Block
@@ -245,7 +245,7 @@ func (chain *ChainT) updateBlock(height Height, block Block, delTXs []Transactio
 
 	for _, tx := range block.Transactions() {
 		chain.setTX(tx)
-		go chain.Mempool().Clear(tx.Hash())
+		go chain.Mempool().Delete(tx.Hash())
 	}
 
 	for _, tx := range delTXs {
