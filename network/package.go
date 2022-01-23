@@ -11,8 +11,8 @@ var (
 type PackageT []byte
 
 // Size of package in big endian bytes.
-func (pack PackageT) Size() uint {
-	return uint(len(pack.Bytes()))
+func (pack PackageT) Size() uint64 {
+	return uint64(len(pack.Bytes()))
 }
 
 // Size of package in big endian bytes.
@@ -21,8 +21,8 @@ func (pack PackageT) SizeToBytes() []byte {
 }
 
 // From big endian bytes to uint size.
-func (pack PackageT) BytesToSize() uint {
-	return uint(encoding.BytesToUint64(pack.Bytes()))
+func (pack PackageT) BytesToSize() uint64 {
+	return encoding.BytesToUint64(pack.Bytes())
 }
 
 // Bytes of package.

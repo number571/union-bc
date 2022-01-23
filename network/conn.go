@@ -12,33 +12,34 @@ func ReadMessage(conn Conn) Message {
 
 	var (
 		pack   []byte
-		size   = uint(0)
+		size   = uint64(0)
 		msg    = new(MessageT)
 		buflen = make([]byte, SizeUint64)
-		buffer = make([]byte, PackSize)
 	)
 
 	length, err := conn.Read(buflen)
 	if err != nil {
+		// fmt.Println(111)
 		return nil
 	}
+
 	if length != SizeUint64 {
+		// fmt.Println(222)
 		return nil
 	}
 
 	mustLen := PackageT(buflen).BytesToSize()
 	if mustLen > PackSize {
+		// fmt.Println(333)
 		return nil
 	}
 
 	for {
+		buffer := make([]byte, mustLen-size)
+
 		length, err = conn.Read(buffer)
 		if err != nil {
-			return nil
-		}
-
-		size += uint(length)
-		if size > mustLen {
+			// fmt.Println(444)
 			return nil
 		}
 
@@ -50,6 +51,7 @@ func ReadMessage(conn Conn) Message {
 			[]byte{},
 		)
 
+		size += uint64(length)
 		if size == mustLen {
 			break
 		}
@@ -57,6 +59,7 @@ func ReadMessage(conn Conn) Message {
 
 	err = json.Unmarshal(pack, msg)
 	if err != nil {
+		// fmt.Println(555)
 		return nil
 	}
 

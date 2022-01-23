@@ -20,11 +20,11 @@ type Message interface {
 }
 
 type Package interface {
-	Size() uint
+	Size() uint64
 	Bytes() []byte
 
 	SizeToBytes() []byte
-	BytesToSize() uint
+	BytesToSize() uint64
 }
 
 type Client interface {
@@ -33,7 +33,6 @@ type Client interface {
 }
 
 type Node interface {
-	Moniker() string
 	Mutex() *sync.Mutex
 
 	Broadcast(Message)

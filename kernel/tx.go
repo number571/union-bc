@@ -35,6 +35,10 @@ func NewTransaction(priv PrivKey, payLoad []byte) Transaction {
 		return nil
 	}
 
+	if len(payLoad) > PayloadSize {
+		return nil
+	}
+
 	tx := &TransactionT{
 		payLoad:   payLoad,
 		validator: priv.PubKey(),
@@ -104,6 +108,10 @@ func (tx *TransactionT) String() string {
 }
 
 func (tx *TransactionT) IsValid() bool {
+	if len(tx.payLoad) > PayloadSize {
+		return false
+	}
+
 	if tx.Validator() == nil {
 		return false
 	}

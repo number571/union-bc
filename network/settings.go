@@ -1,12 +1,10 @@
 package network
 
 const (
-	MappSize  = 1024      // hashes
-	BuffSize  = (1 << 10) // 1KiB
-	PackSize  = (1 << 20) // 1MiB
-	ConnSize  = 256       // max num connections
+	MappSize  = 2048      // hashes
+	ConnSize  = 2048      // max num connections
 	RetrySize = 32        // num retry send
-	TimeLimit = 5         // seconds
+	PackSize  = (8 << 20) // bytes
 )
 
 const (

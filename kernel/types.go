@@ -28,7 +28,15 @@ type Signifier interface {
 	Hasher
 }
 
+type Iterator interface {
+	Next() bool
+	Key() []byte
+	Value() []byte
+	Close()
+}
+
 type KeyValueDB interface {
+	Iter([]byte) Iterator
 	Set([]byte, []byte)
 	Get([]byte) []byte
 	Del([]byte)
@@ -49,12 +57,13 @@ type Mempool interface {
 type Chain interface {
 	Accept(Block) bool
 	Merge(Height, []Transaction) bool
-	Height() Height
+	Rollback(uint64) bool
 
+	Height() Height
 	TX(Hash) Transaction
 	Block(Height) Block
-	Mempool() Mempool
 
+	Mempool() Mempool
 	Close()
 }
 

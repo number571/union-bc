@@ -14,16 +14,14 @@ type NodeT struct {
 	mainMtx  sync.Mutex
 	routeMtx sync.Mutex
 
-	moniker      string
 	mapping      map[string]bool
 	connections  map[Conn]bool
 	handleRoutes map[MsgType]HandleFunc
 }
 
 // Create client by private key as identification.
-func NewNode(moniker string) Node {
+func NewNode() Node {
 	return &NodeT{
-		moniker:      moniker,
 		mapping:      make(map[string]bool),
 		connections:  make(map[Conn]bool),
 		handleRoutes: make(map[MsgType]HandleFunc),
@@ -34,12 +32,10 @@ func (node *NodeT) Mutex() *sync.Mutex {
 	return &node.routeMtx
 }
 
-func (node *NodeT) Moniker() string {
-	return node.moniker
-}
-
 func (node *NodeT) Broadcast(msg Message) {
+	node.setMapping(msg.Hash())
 	msgBytes := msg.Bytes()
+
 	for _, conn := range node.Connections() {
 		go conn.Write(msgBytes)
 	}

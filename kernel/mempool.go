@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/number571/go-peer/encoding"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var (
@@ -40,10 +39,7 @@ func (mempool *MempoolT) Clear() {
 	mempool.mtx.Lock()
 	defer mempool.mtx.Unlock()
 
-	var (
-		db   = (mempool.ptr).(*KeyValueDBT)
-		iter = db.ptr.NewIterator(util.BytesPrefix([]byte(KeyMempoolPrefixTX)), nil)
-	)
+	iter := mempool.ptr.Iter([]byte(KeyMempoolPrefixTX))
 
 	for iter.Next() {
 		txBytes := iter.Value()
@@ -56,7 +52,7 @@ func (mempool *MempoolT) Clear() {
 		mempool.deleteTX(tx.Hash())
 	}
 
-	iter.Release()
+	iter.Close()
 }
 
 func (mempool *MempoolT) Push(tx Transaction) {
@@ -89,8 +85,7 @@ func (mempool *MempoolT) Pop() []Transaction {
 	}
 
 	var (
-		db    = (mempool.ptr).(*KeyValueDBT)
-		iter  = db.ptr.NewIterator(util.BytesPrefix([]byte(KeyMempoolPrefixTX)), nil)
+		iter  = mempool.ptr.Iter([]byte(KeyMempoolPrefixTX))
 		txs   []Transaction
 		count uint
 	)
@@ -103,7 +98,7 @@ func (mempool *MempoolT) Pop() []Transaction {
 		}
 		txs = append(txs, tx)
 	}
-	iter.Release()
+	iter.Close()
 
 	if count != TXsSize {
 		return nil

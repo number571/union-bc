@@ -16,4 +16,6 @@ const (
 const (
 	MaskBit      = network.MsgType(1 << 31)
 	IntervalTime = 5 // seconds
+	TXsInSecond  = 100
+	RetryNum     = 10
 )

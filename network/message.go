@@ -48,6 +48,7 @@ func (msg *MessageT) Bytes() []byte {
 	if err != nil {
 		return nil
 	}
+
 	pack := PackageT(jsonData)
 	return bytes.Join(
 		[][]byte{

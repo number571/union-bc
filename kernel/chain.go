@@ -103,6 +103,26 @@ func (chain *ChainT) Close() {
 	mempool.ptr.Close()
 }
 
+func (chain *ChainT) Rollback(ptr uint64) bool {
+	chain.mtx.Lock()
+	defer chain.mtx.Unlock()
+
+	hptr := Height(ptr)
+
+	if hptr > chain.Height() {
+		return false
+	}
+
+	newHeight := chain.Height() - hptr
+
+	chain.setHeight(newHeight)
+	for i := newHeight + 1; i <= chain.Height(); i++ {
+		chain.delBlock(i)
+	}
+
+	return true
+}
+
 func (chain *ChainT) Mempool() Mempool {
 	return chain.mempool
 }
@@ -238,6 +258,14 @@ func (chain *ChainT) setBlock(block Block) {
 	for _, tx := range block.Transactions() {
 		chain.setTX(tx)
 	}
+}
+
+func (chain *ChainT) delBlock(height Height) {
+	block := chain.getBlock(height)
+	for _, tx := range block.Transactions() {
+		chain.delTX(tx)
+	}
+	chain.blocks.Del(GetKeyBlock(height))
 }
 
 func (chain *ChainT) updateBlock(height Height, block Block, delTXs []Transaction) {
