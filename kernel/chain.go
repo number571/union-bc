@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -30,6 +31,10 @@ func NewChain(path string, genesis Block) Chain {
 
 	if !genesis.IsValid() {
 		return nil
+	}
+
+	if pathIsExist(path) {
+		os.RemoveAll(path)
 	}
 
 	blocks := NewDB(blocksPath)
@@ -262,9 +267,11 @@ func (chain *ChainT) setBlock(block Block) {
 
 func (chain *ChainT) delBlock(height Height) {
 	block := chain.getBlock(height)
+
 	for _, tx := range block.Transactions() {
 		chain.delTX(tx)
 	}
+
 	chain.blocks.Del(GetKeyBlock(height))
 }
 
@@ -280,4 +287,9 @@ func (chain *ChainT) updateBlock(height Height, block Block, delTXs []Transactio
 		chain.delTX(tx)
 		go chain.Mempool().Push(tx)
 	}
+}
+
+func pathIsExist(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
