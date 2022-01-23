@@ -177,47 +177,13 @@ func syncBlocks(client network.Client) {
 		if i != 0 {
 			ok := Chain.Accept(block)
 			if !ok {
-				Log().Error("1SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
-				return
+				Log().Error("SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
+				Chain.Rollback(2)
+				i -= 2
+				continue
 			}
 			Log().Info("SYNCABLE", i, block.Hash(), mempool.Height(), kernel.TXsSize, 0)
 		}
-	}
-
-	// syncable last block
-	for count := 0; count < RetryNum; count++ {
-		block := getBlock(client, i)
-		if block == nil {
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		ok := Chain.Accept(block)
-		if !ok {
-			ok := Chain.Rollback(1)
-			if !ok {
-				Log().Error("2SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
-				return
-			}
-
-			block := getBlock(client, i-1)
-			if block == nil {
-				Log().Error("3SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
-				return
-			}
-
-			ok = Chain.Accept(block)
-			if !ok {
-				Log().Error("4SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
-				return
-			}
-
-			count = 0
-			continue
-		}
-
-		Log().Info("SYNCABLE", i, block.Hash(), mempool.Height(), kernel.TXsSize, 0)
-		break
 	}
 }
 

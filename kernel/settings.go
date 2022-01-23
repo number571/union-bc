@@ -2,9 +2,9 @@ package kernel
 
 const (
 	KeySize     = 1024 // num bits
-	MempoolSize = 2000 // max num txs in mempool
+	MempoolSize = 1000 // max num txs in mempool
 
-	TXsSize     = 256  // num txs in block
+	TXsSize     = 32   // num txs in block
 	PayloadSize = 1024 // num bytes in tx.payload
 
 	BlocksPath  = "blocks.db"
