@@ -16,5 +16,6 @@ const (
 const (
 	MaskBit      = network.MsgType(1 << 31)
 	IntervalTime = 5 // seconds
-	TXsInSecond  = 16
+	ClientsNum   = 3
+	TXsInSecond  = 3
 )

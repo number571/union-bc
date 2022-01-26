@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -59,19 +60,26 @@ func main() {
 func initClient() {
 	time.Sleep(1 * time.Second)
 
-	client := network.NewClient(Address)
-	if client == nil {
-		panic("client is nil")
+	for i := 0; i < ClientsNum; i++ {
+		go func() {
+			client := network.NewClient(Address)
+			if client == nil {
+				panic("client is nil")
+			}
+			defer client.Close()
+
+			for {
+				priv := crypto.NewPrivKey(kernel.KeySize)
+				for i := 0; i < TXsInSecond; i++ {
+					tx := kernel.NewTransaction(priv, []byte(crypto.RandString(20)))
+					_ = client.Request(network.NewMessage(MsgSetTX, tx.Bytes()))
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}()
 	}
 
-	for {
-		priv := crypto.NewPrivKey(kernel.KeySize)
-		for i := 0; i < TXsInSecond; i++ {
-			tx := kernel.NewTransaction(priv, []byte(crypto.RandString(20)))
-			_ = client.Request(network.NewMessage(MsgSetTX, tx.Bytes()))
-		}
-		time.Sleep(1 * time.Second)
-	}
+	select {}
 }
 
 func initNode(node network.Node) {
@@ -113,11 +121,108 @@ func initNode(node network.Node) {
 			atomic.AddUint64(&CurrentTime, 1)
 
 			ctime := atomic.LoadUint64(&CurrentTime) % IntervalTime
-			if ctime == 0 {
-				tryUpdateBlock(node, Chain.Mempool(), Chain.Height())
+			if ctime != 0 {
+				continue
 			}
+
+			commitBlock(node, Chain.Mempool(), Chain.Height())
+			tryUpdateBlock(node, Chain.Mempool(), Chain.Height())
 		}
 	}(node)
+}
+
+func commitBlock(node network.Node, mempool kernel.Mempool, height kernel.Height) {
+	type blockInfo struct {
+		count uint
+		block kernel.Block
+	}
+
+	var (
+		commitBlock = Chain.Block(height)
+		hash        = encoding.Base64Encode(commitBlock.Hash())
+		blocks      = make(map[string]blockInfo)
+	)
+
+	blocks[hash] = blockInfo{
+		count: 1,
+		block: commitBlock,
+	}
+
+	for _, addr := range ListAddr {
+		if addr == Address {
+			continue
+		}
+
+		client := network.NewClient(addr)
+		if client == nil {
+			continue
+		}
+
+		block := getBlock(client, height)
+		if block == nil {
+			client.Close()
+			continue
+		}
+		client.Close()
+
+		if !bytes.Equal(block.PrevHash(), commitBlock.PrevHash()) {
+			continue
+		}
+
+		hash := encoding.Base64Encode(block.Hash())
+		if val, ok := blocks[hash]; !ok {
+			blocks[hash] = blockInfo{
+				count: 1,
+				block: block,
+			}
+		} else {
+			blocks[hash] = blockInfo{
+				count: val.count + 1,
+				block: block,
+			}
+		}
+	}
+
+	var listBlocks []blockInfo
+	for _, val := range blocks {
+		listBlocks = append(listBlocks, val)
+	}
+
+	sort.SliceStable(listBlocks, func(i, j int) bool {
+		return listBlocks[i].count > listBlocks[j].count
+	})
+
+	maxCount := listBlocks[0].count
+	for i, info := range listBlocks {
+		if info.count < maxCount {
+			listBlocks = listBlocks[:i]
+			break
+		}
+	}
+
+	sort.SliceStable(listBlocks, func(i, j int) bool {
+		return bytes.Compare(listBlocks[i].block.Hash(), listBlocks[j].block.Hash()) < 0
+	})
+
+	if bytes.Equal(commitBlock.Hash(), listBlocks[0].block.Hash()) {
+		Log().Info("COMMIT", height, commitBlock.Hash(), mempool.Height(), kernel.TXsSize, len(node.Connections()))
+		return
+	}
+
+	commitBlock = listBlocks[0].block
+	ok := Chain.Rollback(1)
+	if !ok {
+		Log().Warning("COMMIT", height, commitBlock.Hash(), mempool.Height(), kernel.TXsSize, len(node.Connections()))
+		return
+	}
+
+	ok = Chain.Accept(commitBlock)
+	if !ok {
+		Log().Error("COMMIT", height, mempool.Height(), kernel.TXsSize, len(node.Connections()))
+		return
+	}
+
+	Log().Info("COMMIT", height, commitBlock.Hash(), mempool.Height(), kernel.TXsSize, len(node.Connections()))
 }
 
 func getBlock(client network.Client, height kernel.Height) kernel.Block {
@@ -178,9 +283,7 @@ func syncBlocks(client network.Client) {
 			ok := Chain.Accept(block)
 			if !ok {
 				Log().Error("SYNCABLE", i, mempool.Height(), kernel.TXsSize, 0)
-				Chain.Rollback(2)
-				i -= 2
-				continue
+				os.Exit(1)
 			}
 			Log().Info("SYNCABLE", i, block.Hash(), mempool.Height(), kernel.TXsSize, 0)
 		}
@@ -340,7 +443,6 @@ func handleSetTX(node network.Node, conn network.Conn, msg network.Message) {
 	}
 
 	mempool.Push(tx)
-	// node.Broadcast(msg)
 }
 
 func tryUpdateBlock(node network.Node, mempool kernel.Mempool, height kernel.Height) {

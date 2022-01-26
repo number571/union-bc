@@ -3,9 +3,22 @@ package network
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 )
 
 func ReadMessage(conn Conn) Message {
+	ch := make(chan Message)
+	go readMessage(conn, ch)
+
+	select {
+	case rmsg := <-ch:
+		return rmsg
+	case <-time.After(TimeSize * time.Second):
+		return nil
+	}
+}
+
+func readMessage(conn Conn, ch chan Message) {
 	const (
 		SizeUint64 = 8 // bytes
 	)
@@ -20,18 +33,21 @@ func ReadMessage(conn Conn) Message {
 	length, err := conn.Read(buflen)
 	if err != nil {
 		// fmt.Println(111)
-		return nil
+		ch <- nil
+		return
 	}
 
 	if length != SizeUint64 {
 		// fmt.Println(222)
-		return nil
+		ch <- nil
+		return
 	}
 
 	mustLen := PackageT(buflen).BytesToSize()
 	if mustLen > PackSize {
 		// fmt.Println(333)
-		return nil
+		ch <- nil
+		return
 	}
 
 	for {
@@ -40,7 +56,8 @@ func ReadMessage(conn Conn) Message {
 		length, err = conn.Read(buffer)
 		if err != nil {
 			// fmt.Println(444)
-			return nil
+			ch <- nil
+			return
 		}
 
 		pack = bytes.Join(
@@ -59,9 +76,14 @@ func ReadMessage(conn Conn) Message {
 
 	err = json.Unmarshal(pack, msg)
 	if err != nil {
-		// fmt.Println(555)
-		return nil
+		ch <- nil
+		return
 	}
 
-	return msg
+	if msg.Network() != NetworkName {
+		ch <- nil
+		return
+	}
+
+	ch <- msg
 }

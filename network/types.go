@@ -13,7 +13,9 @@ type HandleFunc func(Node, Conn, Message)
 type Message interface {
 	Head() MsgType
 	Body() []byte
+
 	Nonce() []byte
+	Network() string
 
 	Hash() string
 	Bytes() []byte
