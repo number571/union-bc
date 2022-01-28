@@ -1,20 +1,16 @@
 package main
 
-import (
-	"github.com/number571/union-bc/network"
+const (
+	MsgGetTime   = 0x01
+	MsgGetHeight = 0x02
+	MsgGetBlock  = 0x03
+	MsgSetBlock  = 0x04
+	MsgGetTX     = 0x05
+	MsgSetTX     = 0x06
 )
 
 const (
-	MsgGetTime   = 1
-	MsgGetHeight = 2
-	MsgGetBlock  = 3
-	MsgSetBlock  = 4
-	MsgGetTX     = 5
-	MsgSetTX     = 6
-)
-
-const (
-	MaskBit      = network.MsgType(1 << 31)
+	MaskBit      = (1 << 31)
 	IntervalTime = 5 // seconds
 	ClientsNum   = 3
 	TXsInSecond  = 3

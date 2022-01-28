@@ -42,6 +42,11 @@ func init() {
 	} else {
 		Chain = kernel.NewChain(ChainPath, newGenesis())
 	}
+
+	if len(os.Args) == 3 && os.Args[2] == "rollback" {
+		Chain.Rollback(10)
+		os.Exit(1)
+	}
 }
 
 func main() {
@@ -62,17 +67,17 @@ func initClient() {
 
 	for i := 0; i < ClientsNum; i++ {
 		go func() {
-			client := network.NewClient(Address)
-			if client == nil {
-				panic("client is nil")
+			conn := network.NewConn(Address)
+			if conn == nil {
+				panic("conn is nil")
 			}
-			defer client.Close()
+			defer conn.Close()
 
 			for {
 				priv := crypto.NewPrivKey(kernel.KeySize)
 				for i := 0; i < TXsInSecond; i++ {
 					tx := kernel.NewTransaction(priv, []byte(crypto.RandString(20)))
-					_ = client.Request(network.NewMessage(MsgSetTX, tx.Bytes()))
+					_ = conn.Request(network.NewMessage(MsgSetTX, tx.Bytes()))
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -84,23 +89,23 @@ func initClient() {
 
 func initNode(node network.Node) {
 	fmt.Println("Node is listening...")
-	var client network.Client
+	var conn network.Conn
 
 	for _, addr := range ListAddr {
 		if addr == Address {
 			continue
 		}
-		client = network.NewClient(addr)
-		if client == nil {
+		conn = network.NewConn(addr)
+		if conn == nil {
 			continue
 		}
 		break
 	}
 
-	if client != nil {
-		syncBlocks(client)
-		atomic.StoreUint64(&CurrentTime, getTime(client))
-		client.Close()
+	if conn != nil {
+		syncBlocks(conn)
+		atomic.StoreUint64(&CurrentTime, getTime(conn))
+		conn.Close()
 	}
 
 	// Connects
@@ -153,17 +158,17 @@ func commitBlock(node network.Node, mempool kernel.Mempool, height kernel.Height
 			continue
 		}
 
-		client := network.NewClient(addr)
-		if client == nil {
+		conn := network.NewConn(addr)
+		if conn == nil {
 			continue
 		}
 
-		block := getBlock(client, height)
+		block := getBlock(conn, height)
 		if block == nil {
-			client.Close()
+			conn.Close()
 			continue
 		}
-		client.Close()
+		conn.Close()
 
 		if !bytes.Equal(block.PrevHash(), commitBlock.PrevHash()) {
 			continue
@@ -210,7 +215,10 @@ func commitBlock(node network.Node, mempool kernel.Mempool, height kernel.Height
 	}
 
 	commitBlock = listBlocks[0].block
+
+	node.Mutex().Lock()
 	ok := Chain.Rollback(1)
+	node.Mutex().Unlock()
 	if !ok {
 		Log().Warning("COMMIT", height, commitBlock.Hash(), mempool.Height(), kernel.TXsSize, len(node.Connections()))
 		return
@@ -225,13 +233,13 @@ func commitBlock(node network.Node, mempool kernel.Mempool, height kernel.Height
 	Log().Info("COMMIT", height, commitBlock.Hash(), mempool.Height(), kernel.TXsSize, len(node.Connections()))
 }
 
-func getBlock(client network.Client, height kernel.Height) kernel.Block {
+func getBlock(conn network.Conn, height kernel.Height) kernel.Block {
 	msg := network.NewMessage(
 		MsgGetBlock,
 		encoding.Uint64ToBytes(uint64(height)),
 	)
 
-	msg = client.Request(msg)
+	msg = conn.Request(msg)
 	if msg == nil {
 		return nil
 	}
@@ -239,13 +247,13 @@ func getBlock(client network.Client, height kernel.Height) kernel.Block {
 	return kernel.LoadBlock(msg.Body())
 }
 
-func getTime(client network.Client) uint64 {
+func getTime(conn network.Conn) uint64 {
 	msg := network.NewMessage(
 		MsgGetTime,
 		nil,
 	)
 
-	msg = client.Request(msg)
+	msg = conn.Request(msg)
 	if msg == nil {
 		return 0
 	}
@@ -253,7 +261,7 @@ func getTime(client network.Client) uint64 {
 	return encoding.BytesToUint64(msg.Body())
 }
 
-func syncBlocks(client network.Client) {
+func syncBlocks(conn network.Conn) {
 	var (
 		mempool    = Chain.Mempool()
 		initHeight = Chain.Height()
@@ -267,7 +275,7 @@ func syncBlocks(client network.Client) {
 			continue
 		}
 
-		block := getBlock(client, i)
+		block := getBlock(conn, i)
 		if block == nil {
 			break
 		}
@@ -300,7 +308,7 @@ func handleGetTime(node network.Node, conn network.Conn, msg network.Message) {
 		encoding.Uint64ToBytes(currTime),
 	)
 
-	conn.Write(rmsg.Bytes())
+	conn.Write(rmsg)
 }
 
 func handleGetHeight(node network.Node, conn network.Conn, msg network.Message) {
@@ -313,7 +321,7 @@ func handleGetHeight(node network.Node, conn network.Conn, msg network.Message) 
 		encoding.Uint64ToBytes(height),
 	)
 
-	conn.Write(rmsg.Bytes())
+	conn.Write(rmsg)
 }
 
 func handleGetBlock(node network.Node, conn network.Conn, msg network.Message) {
@@ -332,7 +340,7 @@ func handleGetBlock(node network.Node, conn network.Conn, msg network.Message) {
 		blockBytes,
 	)
 
-	conn.Write(rmsg.Bytes())
+	conn.Write(rmsg)
 }
 
 func handleSetBlock(node network.Node, conn network.Conn, msg network.Message) {
@@ -406,7 +414,7 @@ func handleGetTX(node network.Node, conn network.Conn, msg network.Message) {
 		txBytes,
 	)
 
-	conn.Write(rmsg.Bytes())
+	conn.Write(rmsg)
 }
 
 func handleSetTX(node network.Node, conn network.Conn, msg network.Message) {
@@ -422,7 +430,7 @@ func handleSetTX(node network.Node, conn network.Conn, msg network.Message) {
 			MsgSetTX|MaskBit,
 			encoding.Uint64ToBytes(retCode),
 		)
-		conn.Write(msg.Bytes())
+		conn.Write(msg)
 	}(conn)
 
 	if tx == nil {

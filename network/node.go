@@ -3,6 +3,8 @@ package network
 import (
 	"net"
 	"sync"
+
+	"github.com/number571/go-peer/crypto"
 )
 
 var (
@@ -15,7 +17,7 @@ type NodeT struct {
 	routeMtx sync.Mutex
 
 	mapping      map[string]bool
-	connections  map[Conn]bool
+	connections  map[string]Conn
 	handleRoutes map[MsgType]HandleFunc
 }
 
@@ -23,7 +25,7 @@ type NodeT struct {
 func NewNode() Node {
 	return &NodeT{
 		mapping:      make(map[string]bool),
-		connections:  make(map[Conn]bool),
+		connections:  make(map[string]Conn),
 		handleRoutes: make(map[MsgType]HandleFunc),
 	}
 }
@@ -34,10 +36,9 @@ func (node *NodeT) Mutex() *sync.Mutex {
 
 func (node *NodeT) Broadcast(msg Message) {
 	node.setMapping(msg.Hash())
-	msgBytes := msg.Bytes()
 
 	for _, conn := range node.Connections() {
-		go conn.Write(msgBytes)
+		go conn.Write(msg)
 	}
 }
 
@@ -61,12 +62,15 @@ func (node *NodeT) Listen(address string) error {
 			continue
 		}
 
-		whoIs := make([]byte, 1)
+		var (
+			iconn = &ConnT{crypto.RandString(16), conn}
+			whoIs = make([]byte, 1)
+		)
 		conn.Read(whoIs)
 
 		switch whoIs[0] {
 		case IsNode:
-			node.setConnection(conn)
+			node.setConnection(iconn)
 		case IsClient:
 			// do nothing
 		default:
@@ -74,7 +78,7 @@ func (node *NodeT) Listen(address string) error {
 			continue
 		}
 
-		go node.handleConn(conn)
+		go node.handleConn(iconn)
 	}
 
 	return nil
@@ -86,18 +90,15 @@ func (node *NodeT) Handle(tmsg MsgType, handle HandleFunc) Node {
 	return node
 }
 
-func (node *NodeT) handleConn(conn Conn) {
+func (node *NodeT) handleConn(conn *ConnT) {
 	defer func() {
 		node.delConnection(conn)
 	}()
 
 	counter := 0
-	for {
-		if counter == RetrySize {
-			break
-		}
 
-		msg := ReadMessage(conn)
+	for counter != RetrySize {
+		msg := conn.Read()
 		if msg == nil {
 			counter++
 			continue
@@ -105,6 +106,7 @@ func (node *NodeT) handleConn(conn Conn) {
 
 		hash := msg.Hash()
 		if node.inMapping(hash) {
+			counter++
 			continue
 		}
 		node.setMapping(hash)
@@ -138,7 +140,7 @@ func (node *NodeT) Connections() []Conn {
 	defer node.mainMtx.Unlock()
 
 	var list []Conn
-	for conn := range node.connections {
+	for _, conn := range node.connections {
 		list = append(list, conn)
 	}
 
@@ -159,14 +161,16 @@ func (node *NodeT) Connect(address string) Conn {
 
 	conn.Write([]byte{IsNode})
 
-	node.setConnection(conn)
-	go node.handleConn(conn)
+	iconn := &ConnT{crypto.RandString(16), conn}
 
-	return conn
+	node.setConnection(iconn)
+	go node.handleConn(iconn)
+
+	return iconn
 }
 
 func (node *NodeT) Disconnect(conn Conn) {
-	node.delConnection(conn)
+	node.delConnection(conn.(*ConnT))
 }
 
 func (node *NodeT) setFunction(tmsg MsgType, handle HandleFunc) {
@@ -191,18 +195,18 @@ func (node *NodeT) hasMaxConnSize() bool {
 	return len(node.connections) > ConnSize
 }
 
-func (node *NodeT) setConnection(conn Conn) {
+func (node *NodeT) setConnection(conn *ConnT) {
 	node.mainMtx.Lock()
 	defer node.mainMtx.Unlock()
 
-	node.connections[conn] = true
+	node.connections[conn.nonce] = conn
 }
 
-func (node *NodeT) delConnection(conn Conn) {
+func (node *NodeT) delConnection(conn *ConnT) {
 	node.mainMtx.Lock()
 	defer node.mainMtx.Unlock()
 
-	delete(node.connections, conn)
+	delete(node.connections, conn.nonce)
 	conn.Close()
 }
 

@@ -1,13 +1,10 @@
 package network
 
 import (
-	"net"
 	"sync"
 )
 
-type Conn net.Conn
 type MsgType uint32
-
 type HandleFunc func(Node, Conn, Message)
 
 type Message interface {
@@ -29,9 +26,12 @@ type Package interface {
 	BytesToSize() uint64
 }
 
-type Client interface {
+type Conn interface {
 	Request(Message) Message
-	Close()
+	Close() error
+
+	Write(Message)
+	Read() Message
 }
 
 type Node interface {
