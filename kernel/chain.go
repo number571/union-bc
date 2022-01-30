@@ -198,7 +198,6 @@ func (chain *ChainT) Merge(height Height, txs []Transaction) bool {
 		return false
 	}
 
-	// select x transactions from X by algorithm
 	sort.SliceStable(resultTXs, func(i, j int) bool {
 		return bytes.Compare(resultTXs[i].Hash(), resultTXs[j].Hash()) < 0
 	})

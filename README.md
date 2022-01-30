@@ -1,2 +1,2 @@
 # union-bc
-Blockchain kernel with consensus UoP (union of peers).
+Blockchain kernel with Proof-of-Union consensus.
