@@ -31,7 +31,17 @@ func NewConn(address string) Conn {
 
 func (conn *ConnT) Request(msg Message) Message {
 	conn.Write(msg)
-	return conn.Read()
+
+	ch := make(chan Message)
+	go readMessage(conn, ch)
+
+	select {
+	case rmsg := <-ch:
+		return rmsg
+	case <-time.After(TimeSize * time.Second):
+		fmt.Println(777)
+		return nil
+	}
 }
 
 func (conn *ConnT) Close() error {
@@ -45,14 +55,7 @@ func (conn *ConnT) Write(msg Message) {
 func (conn *ConnT) Read() Message {
 	ch := make(chan Message)
 	go readMessage(conn, ch)
-
-	select {
-	case rmsg := <-ch:
-		return rmsg
-	case <-time.After(TimeSize * time.Second):
-		fmt.Println(777)
-		return nil
-	}
+	return <-ch
 }
 
 func readMessage(conn *ConnT, ch chan Message) {

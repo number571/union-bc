@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -38,13 +39,16 @@ type updateBlock struct {
 func init() {
 	if pathIsExist(ChainPath) {
 		Chain = kernel.LoadChain(ChainPath)
-		Chain.Mempool().Clear()
 	} else {
 		Chain = kernel.NewChain(ChainPath, newGenesis())
 	}
 
-	if len(os.Args) == 3 && os.Args[2] == "rollback" {
-		Chain.Rollback(10)
+	if len(os.Args) >= 3 && os.Args[2] == "rollback" {
+		defaultNum := 10
+		if len(os.Args) == 4 {
+			defaultNum, _ = strconv.Atoi(os.Args[3])
+		}
+		Chain.Rollback(uint64(defaultNum))
 		os.Exit(1)
 	}
 }
@@ -164,11 +168,10 @@ func commitBlock(node network.Node, mempool kernel.Mempool, height kernel.Height
 		}
 
 		block := getBlock(conn, height)
+		conn.Close()
 		if block == nil {
-			conn.Close()
 			continue
 		}
-		conn.Close()
 
 		if !bytes.Equal(block.PrevHash(), commitBlock.PrevHash()) {
 			continue

@@ -40,6 +40,7 @@ func (mempool *MempoolT) Clear() {
 	defer mempool.mtx.Unlock()
 
 	iter := mempool.ptr.Iter([]byte(KeyMempoolPrefixTX))
+	defer iter.Close()
 
 	for iter.Next() {
 		txBytes := iter.Value()
@@ -51,8 +52,6 @@ func (mempool *MempoolT) Clear() {
 
 		mempool.deleteTX(tx.Hash())
 	}
-
-	iter.Close()
 }
 
 func (mempool *MempoolT) Push(tx Transaction) {
@@ -85,20 +84,23 @@ func (mempool *MempoolT) Pop() []Transaction {
 	}
 
 	var (
-		iter  = mempool.ptr.Iter([]byte(KeyMempoolPrefixTX))
 		txs   []Transaction
 		count uint
 	)
 
+	iter := mempool.ptr.Iter([]byte(KeyMempoolPrefixTX))
+	defer iter.Close()
+
 	for count = 0; iter.Next() && count < TXsSize; count++ {
 		txBytes := iter.Value()
+
 		tx := LoadTransaction(txBytes)
 		if tx == nil {
 			return nil
 		}
+
 		txs = append(txs, tx)
 	}
-	iter.Close()
 
 	if count != TXsSize {
 		return nil

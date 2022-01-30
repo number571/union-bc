@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -153,12 +152,6 @@ func (chain *ChainT) Accept(block Block) bool {
 
 	for _, tx := range block.Transactions() {
 		if chain.TX(tx.Hash()) != nil {
-			for _, lastTX := range lastBlock.Transactions() {
-				if bytes.Equal(lastTX.Hash(), tx.Hash()) {
-					fmt.Println("YEEEES")
-				}
-			}
-
 			return false
 		}
 	}
